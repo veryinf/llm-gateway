@@ -2,39 +2,42 @@ package worker
 
 import (
 	"context"
+	"database/sql"
 	"time"
-
-	"llm-gateway/internal/model"
-
-	"gorm.io/gorm"
 )
 
 type CleanupWorker struct {
-	db *gorm.DB
+	db *sql.DB
 }
 
-func NewCleanupWorker(db *gorm.DB) *CleanupWorker {
+func NewCleanupWorker(db *sql.DB) *CleanupWorker {
 	return &CleanupWorker{db: db}
 }
 
-// Start runs a periodic cleanup that deletes audit logs older than retentionDays.
-func (w *CleanupWorker) Start(ctx context.Context, retentionDays int) {
+func (w *CleanupWorker) Start(ctx context.Context, auditRetentionDays, statsRetentionDays int) {
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 
-	w.cleanup(retentionDays)
+	w.cleanup(auditRetentionDays, statsRetentionDays)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			w.cleanup(retentionDays)
+			w.cleanup(auditRetentionDays, statsRetentionDays)
 		}
 	}
 }
 
-func (w *CleanupWorker) cleanup(retentionDays int) {
-	before := time.Now().AddDate(0, 0, -retentionDays)
-	w.db.Where("created_at < ?", before).Delete(&model.AuditLog{})
+func (w *CleanupWorker) cleanup(auditRetentionDays, statsRetentionDays int) {
+	if auditRetentionDays > 0 {
+		before := time.Now().AddDate(0, 0, -auditRetentionDays)
+		w.db.Exec("DELETE FROM audit_logs WHERE created_at < ?", before)
+	}
+
+	if statsRetentionDays > 0 {
+		before := time.Now().AddDate(0, 0, -statsRetentionDays)
+		w.db.Exec("DELETE FROM request_logs WHERE created_at < ?", before)
+	}
 }

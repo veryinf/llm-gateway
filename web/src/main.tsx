@@ -1,26 +1,20 @@
-import { StrictMode } from 'react'
-import ReactDOM from 'react-dom/client'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { RouterProvider, createRouter } from '@tanstack/react-router'
-import { Toaster } from 'react-hot-toast'
+import { StrictMode } from 'react';
+import ReactDOM from 'react-dom/client';
+import { Toaster } from '@/components/ui/sonner';
+import { RouterProvider } from '@tanstack/react-router';
+import { queryClient, QueryProvider, router } from './lib/root-provider';
+import './styles.css';
 
-import { routeTree } from './routeTree.gen'
-import './styles.css'
-
-const queryClient = new QueryClient()
-const router = createRouter({ routeTree, context: { queryClient } })
-
-declare module '@tanstack/react-router' {
-  interface Register {
-    router: typeof router
-  }
+// Render the app
+const rootElement = document.getElementById('app');
+if (rootElement && !rootElement.innerHTML) {
+  const root = ReactDOM.createRoot(rootElement);
+  root.render(
+    <StrictMode>
+      <QueryProvider queryClient={queryClient}>
+        <RouterProvider router={router} />
+        <Toaster richColors position="top-right" />
+      </QueryProvider>
+    </StrictMode>,
+  );
 }
-
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-      <Toaster position="top-right" />
-    </QueryClientProvider>
-  </StrictMode>
-)

@@ -1,17 +1,23 @@
 package service
 
 import (
+	"context"
+	"database/sql"
 	"log"
 	"sync"
 	"time"
 
 	"llm-gateway/internal/model"
-
-	"gorm.io/gorm"
 )
 
+const insertRequestLogSQL = `INSERT INTO request_logs
+	(trace_id, user_id, api_key_id, provider_id, model_name, is_stream,
+	 prompt_tokens, completion_tokens, total_tokens, status_code,
+	 error_message, latency_ms, cost, created_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
 type StatsService struct {
-	db         *gorm.DB
+	db         *sql.DB
 	buffer     chan *model.RequestLog
 	done       chan struct{}
 	flushBatch int
@@ -20,7 +26,7 @@ type StatsService struct {
 	stopped    bool
 }
 
-func NewStatsService(db *gorm.DB, bufferSize int) *StatsService {
+func NewStatsService(db *sql.DB, bufferSize int) *StatsService {
 	return &StatsService{
 		db:         db,
 		buffer:     make(chan *model.RequestLog, bufferSize),
@@ -29,13 +35,11 @@ func NewStatsService(db *gorm.DB, bufferSize int) *StatsService {
 	}
 }
 
-// Start launches a background goroutine that periodically flushes buffered request logs to the database.
 func (s *StatsService) Start(flushInterval time.Duration, flushBatch int) {
 	s.flushBatch = flushBatch
 	go s.worker(flushInterval)
 }
 
-// Stop signals the background worker to flush remaining logs and exit gracefully.
 func (s *StatsService) Stop() {
 	s.mu.Lock()
 	if s.stopped {
@@ -48,7 +52,6 @@ func (s *StatsService) Stop() {
 	close(s.done)
 }
 
-// Record enqueues a request log without blocking. If the buffer is full the log is dropped.
 func (s *StatsService) Record(log *model.RequestLog) {
 	s.mu.Lock()
 	stopped := s.stopped
@@ -61,7 +64,6 @@ func (s *StatsService) Record(log *model.RequestLog) {
 	select {
 	case s.buffer <- log:
 	default:
-		// drop when buffer is full to avoid blocking the request path
 	}
 }
 
@@ -75,16 +77,13 @@ func (s *StatsService) worker(flushInterval time.Duration) {
 		if len(batch) == 0 {
 			return
 		}
-		if err := s.db.Create(batch).Error; err != nil {
-			log.Printf("stats flush error: %v", err)
-		}
+		s.flush(batch)
 		batch = batch[:0]
 	}
 
 	for {
 		select {
 		case <-s.done:
-			// drain remaining buffer before exit
 			for {
 				select {
 				case log := <-s.buffer:
@@ -102,5 +101,43 @@ func (s *StatsService) worker(flushInterval time.Duration) {
 		case <-ticker.C:
 			flush()
 		}
+	}
+}
+
+func (s *StatsService) flush(batch []*model.RequestLog) {
+	if len(batch) == 0 {
+		return
+	}
+
+	ctx := context.Background()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		log.Printf("stats flush begin error: %v", err)
+		return
+	}
+
+	stmt, err := tx.PrepareContext(ctx, insertRequestLogSQL)
+	if err != nil {
+		tx.Rollback()
+		log.Printf("stats flush prepare error: %v", err)
+		return
+	}
+	defer stmt.Close()
+
+	for _, l := range batch {
+		if _, err := stmt.ExecContext(ctx,
+			l.TraceID, l.UserID, l.APIKeyID, l.ProviderID,
+			l.ModelName, l.IsStream, l.PromptTokens, l.CompletionTokens,
+			l.TotalTokens, l.StatusCode, l.ErrorMessage, l.LatencyMs,
+			l.Cost, l.CreatedAt,
+		); err != nil {
+			tx.Rollback()
+			log.Printf("stats flush exec error: %v", err)
+			return
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("stats flush commit error: %v", err)
 	}
 }

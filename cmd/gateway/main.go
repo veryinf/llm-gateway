@@ -38,31 +38,41 @@ func main() {
 	}
 	defer logger.Sync()
 
-	// Initialize SQLite
-	db, err := database.NewDB(&cfg.Database)
+	// Initialize SQLite (basic data: users, apikeys, providers, models)
+	sqliteDB, err := database.NewSQLiteDB(&cfg.Database)
 	if err != nil {
-		logger.Fatal("failed to init database", zap.Error(err))
+		logger.Fatal("failed to init sqlite database", zap.Error(err))
 	}
-	logger.Info("database initialized", zap.String("path", cfg.Database.Path))
+	logger.Info("sqlite initialized", zap.String("path", cfg.Database.Path))
 
-	// Initialize cache
-	gwCache := cache.New(db, 30*time.Second)
+	// Initialize DuckDB (analytics data: request_logs, audit_logs)
+	duckDB, err := database.NewDuckDB(cfg.Database.DuckDBPath)
+	if err != nil {
+		logger.Fatal("failed to init duckdb database", zap.Error(err))
+	}
+	logger.Info("duckdb initialized", zap.String("path", cfg.Database.DuckDBPath))
+	defer duckDB.Close()
+
+	// Initialize cache (loads from SQLite)
+	gwCache := cache.New(sqliteDB, 30*time.Second)
 	gwCache.Start()
 	defer gwCache.Stop()
 	logger.Info("cache started")
 
-	// Create services
-	userSvc := service.NewUserService(db, cfg.Auth.JWTSecret)
-	apiKeySvc := service.NewAPIKeyService(db)
-	statsSvc := service.NewStatsService(db, cfg.Stats.BufferSize)
-	auditSvc := service.NewAuditService(db, cfg.Stats.BufferSize)
+	// Create services (SQLite-based)
+	userSvc := service.NewUserService(sqliteDB, cfg.Auth.JWTSecret)
+	apiKeySvc := service.NewAPIKeyService(sqliteDB)
+
+	// Create services (DuckDB-based)
+	statsSvc := service.NewStatsService(duckDB, cfg.Stats.BufferSize)
+	auditSvc := service.NewAuditService(duckDB, cfg.Stats.BufferSize)
 
 	// Create provider registry and model router
 	registry := provider.NewRegistry()
 	modelRouter := router.NewModelRouter(registry)
 
-	// Load providers from DB
-	providerSvc := service.NewProviderService(db, registry, modelRouter)
+	// Load providers from SQLite
+	providerSvc := service.NewProviderService(sqliteDB, registry, modelRouter)
 	if err := providerSvc.LoadProvidersFromDB(); err != nil {
 		logger.Warn("failed to load providers from DB", zap.Error(err))
 	}
@@ -74,8 +84,8 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cleanupWorker := worker.NewCleanupWorker(db)
-	go cleanupWorker.Start(ctx, cfg.Audit.RetentionDays)
+	cleanupWorker := worker.NewCleanupWorker(duckDB)
+	go cleanupWorker.Start(ctx, cfg.Audit.RetentionDays, cfg.Audit.StatsRetentionDays)
 
 	// Create default admin user
 	if cfg.Auth.AdminPassword != "" {
@@ -89,10 +99,10 @@ func main() {
 	}
 
 	// Create handlers
-	gatewayHandler := handler.NewGatewayHandler(modelRouter, statsSvc, auditSvc, db)
-	adminHandler := handler.NewAdminHandler(userSvc, apiKeySvc, providerSvc, db)
-	statsHandler := handler.NewStatsHandler(db)
-	auditHandler := handler.NewAuditHandler(db)
+	gatewayHandler := handler.NewGatewayHandler(modelRouter, statsSvc, auditSvc)
+	adminHandler := handler.NewAdminHandler(userSvc, apiKeySvc, providerSvc, sqliteDB)
+	statsHandler := handler.NewStatsHandler(duckDB, sqliteDB)
+	auditHandler := handler.NewAuditHandler(duckDB)
 
 	// Setup Echo
 	e := echo.New()
@@ -109,9 +119,12 @@ func main() {
 		return c.JSON(http.StatusOK, map[string]interface{}{"status": "ok"})
 	})
 	e.GET("/health/ready", func(c echo.Context) error {
-		sqlDB, _ := db.DB()
+		sqlDB, _ := sqliteDB.DB()
 		if err := sqlDB.Ping(); err != nil {
-			return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{"status": "not ready"})
+			return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{"status": "not ready", "error": "sqlite: " + err.Error()})
+		}
+		if err := duckDB.Ping(); err != nil {
+			return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{"status": "not ready", "error": "duckdb: " + err.Error()})
 		}
 		return c.JSON(http.StatusOK, map[string]interface{}{"status": "ready"})
 	})
@@ -155,8 +168,11 @@ func main() {
 		admin.POST("/login", adminHandler.Login)
 
 		protected := admin.Group("")
-		protected.Use(middleware.AdminAuthMiddleware(cfg.Auth.JWTSecret))
+		protected.Use(middleware.AdminAuthMiddleware(cfg.Auth.JWTSecret, gwCache))
 		{
+			// Profile
+			protected.GET("/profile", adminHandler.Profile)
+
 			// Users
 			protected.GET("/users", adminHandler.ListUsers)
 			protected.POST("/users", adminHandler.CreateUser)
@@ -166,9 +182,14 @@ func main() {
 			protected.POST("/users/:id/api-keys", adminHandler.CreateAPIKey)
 			protected.DELETE("/users/:id/api-keys/:kid", adminHandler.DeleteAPIKey)
 
+			// AKSK
+			protected.POST("/users/:id/aksk", adminHandler.GenerateAKSK)
+			protected.GET("/users/:id/aksk", adminHandler.GetAKSK)
+
 			// API Keys (global)
 			protected.GET("/api-keys", adminHandler.ListAllAPIKeys)
 			protected.DELETE("/api-keys/:id", adminHandler.DeleteAPIKeyByID)
+			protected.PUT("/api-keys/:id/toggle", adminHandler.ToggleAPIKey)
 
 			// Providers
 			protected.GET("/providers", adminHandler.ListProviders)
@@ -181,12 +202,16 @@ func main() {
 			protected.GET("/models", adminHandler.ListModels)
 			protected.POST("/models", adminHandler.CreateModel)
 			protected.PUT("/models/:id", adminHandler.UpdateModel)
+
+			// Configs
+			protected.GET("/configs", adminHandler.ListConfigs)
+			protected.PUT("/configs", adminHandler.UpdateConfig)
 		}
 	}
 
-	// Stats API (JWT auth)
+	// Stats API (JWT + AKSK auth)
 	stats := e.Group("/api")
-	stats.Use(middleware.AdminAuthMiddleware(cfg.Auth.JWTSecret))
+	stats.Use(middleware.AdminAuthMiddleware(cfg.Auth.JWTSecret, gwCache))
 	{
 		stats.GET("/stats/tokens", statsHandler.TokenStats)
 		stats.GET("/stats/requests", statsHandler.RequestStats)
@@ -195,9 +220,9 @@ func main() {
 		stats.GET("/dashboard/overview", statsHandler.DashboardOverview)
 	}
 
-	// Audit API (JWT auth)
+	// Audit API (JWT + AKSK auth)
 	audit := e.Group("/api")
-	audit.Use(middleware.AdminAuthMiddleware(cfg.Auth.JWTSecret))
+	audit.Use(middleware.AdminAuthMiddleware(cfg.Auth.JWTSecret, gwCache))
 	{
 		audit.GET("/audit/logs", auditHandler.ListAuditLogs)
 		audit.GET("/audit/logs/:trace_id", auditHandler.GetAuditLogByTrace)

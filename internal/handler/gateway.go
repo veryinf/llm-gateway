@@ -17,27 +17,23 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"gorm.io/gorm"
 )
 
 type GatewayHandler struct {
 	router   *router.ModelRouter
 	statsSvc *service.StatsService
 	auditSvc *service.AuditService
-	db       *gorm.DB
 }
 
 func NewGatewayHandler(
 	router *router.ModelRouter,
 	statsSvc *service.StatsService,
 	auditSvc *service.AuditService,
-	db *gorm.DB,
 ) *GatewayHandler {
 	return &GatewayHandler{
 		router:   router,
 		statsSvc: statsSvc,
 		auditSvc: auditSvc,
-		db:       db,
 	}
 }
 

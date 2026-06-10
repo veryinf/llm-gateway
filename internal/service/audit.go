@@ -1,17 +1,24 @@
 package service
 
 import (
+	"context"
+	"database/sql"
 	"log"
 	"sync"
 	"time"
 
 	"llm-gateway/internal/model"
-
-	"gorm.io/gorm"
 )
 
+const insertAuditLogSQL = `INSERT INTO audit_logs
+	(trace_id, user_id, api_key_id, provider_id, model_name,
+	 request_summary, response_summary, prompt_tokens, completion_tokens,
+	 status_code, error_message, latency_ms, cost, ip_address, user_agent,
+	 created_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
 type AuditService struct {
-	db         *gorm.DB
+	db         *sql.DB
 	buffer     chan *model.AuditLog
 	done       chan struct{}
 	flushBatch int
@@ -19,7 +26,7 @@ type AuditService struct {
 	stopped    bool
 }
 
-func NewAuditService(db *gorm.DB, bufferSize int) *AuditService {
+func NewAuditService(db *sql.DB, bufferSize int) *AuditService {
 	return &AuditService{
 		db:     db,
 		buffer: make(chan *model.AuditLog, bufferSize),
@@ -27,13 +34,11 @@ func NewAuditService(db *gorm.DB, bufferSize int) *AuditService {
 	}
 }
 
-// Start launches a background goroutine that periodically flushes buffered audit logs.
 func (s *AuditService) Start(flushInterval time.Duration, flushBatch int) {
 	s.flushBatch = flushBatch
 	go s.worker(flushInterval)
 }
 
-// Stop signals the background worker to flush remaining logs and exit.
 func (s *AuditService) Stop() {
 	s.mu.Lock()
 	if s.stopped {
@@ -46,7 +51,6 @@ func (s *AuditService) Stop() {
 	close(s.done)
 }
 
-// Record enqueues an audit log without blocking.
 func (s *AuditService) Record(log *model.AuditLog) {
 	s.mu.Lock()
 	stopped := s.stopped
@@ -59,7 +63,6 @@ func (s *AuditService) Record(log *model.AuditLog) {
 	select {
 	case s.buffer <- log:
 	default:
-		// drop when buffer is full
 	}
 }
 
@@ -73,9 +76,7 @@ func (s *AuditService) worker(flushInterval time.Duration) {
 		if len(batch) == 0 {
 			return
 		}
-		if err := s.db.Create(batch).Error; err != nil {
-			log.Printf("audit flush error: %v", err)
-		}
+		s.flush(batch)
 		batch = batch[:0]
 	}
 
@@ -99,5 +100,43 @@ func (s *AuditService) worker(flushInterval time.Duration) {
 		case <-ticker.C:
 			flush()
 		}
+	}
+}
+
+func (s *AuditService) flush(batch []*model.AuditLog) {
+	if len(batch) == 0 {
+		return
+	}
+
+	ctx := context.Background()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		log.Printf("audit flush begin error: %v", err)
+		return
+	}
+
+	stmt, err := tx.PrepareContext(ctx, insertAuditLogSQL)
+	if err != nil {
+		tx.Rollback()
+		log.Printf("audit flush prepare error: %v", err)
+		return
+	}
+	defer stmt.Close()
+
+	for _, l := range batch {
+		if _, err := stmt.ExecContext(ctx,
+			l.TraceID, l.UserID, l.APIKeyID, l.ProviderID, l.ModelName,
+			l.RequestSummary, l.ResponseSummary, l.PromptTokens, l.CompletionTokens,
+			l.StatusCode, l.ErrorMessage, l.LatencyMs, l.Cost,
+			l.IPAddress, l.UserAgent, l.CreatedAt,
+		); err != nil {
+			tx.Rollback()
+			log.Printf("audit flush exec error: %v", err)
+			return
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("audit flush commit error: %v", err)
 	}
 }

@@ -32,7 +32,7 @@ func (s *UserService) CreateDefaultAdmin(username, password string) (*model.User
 		return nil, nil
 	}
 
-	return s.CreateUser(username, password, "", "", model.RoleAdmin)
+	return s.CreateUser(username, password, "", "", "", model.RoleAdmin)
 }
 
 // Login validates username and password, returns a JWT token on success.
@@ -58,7 +58,7 @@ func (s *UserService) Login(username, password string) (string, error) {
 }
 
 // CreateUser creates a new user with a bcrypt-hashed password.
-func (s *UserService) CreateUser(username, password, email, department string, role model.Role) (*model.User, error) {
+func (s *UserService) CreateUser(username, password, name, phone, department string, role model.Role) (*model.User, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
@@ -67,7 +67,8 @@ func (s *UserService) CreateUser(username, password, email, department string, r
 	user := &model.User{
 		Username:     username,
 		PasswordHash: string(hash),
-		Email:        email,
+		Name:         name,
+		Phone:        phone,
 		Department:   department,
 		Role:         role,
 		IsActive:     true,
@@ -103,4 +104,30 @@ func GenerateAPIKey() (rawKey, prefix, hash string, err error) {
 	hash = hex.EncodeToString(h[:])
 
 	return rawKey, prefix, hash, nil
+}
+
+// GenerateAKSK 为用户生成 AKSK 密钥对
+// 返回 accessKey (用于 X-Api-Key) 和 secretKey (用于签名)
+func (s *UserService) GenerateAKSK(userID uint) (accessKey, secretKey string, err error) {
+	ak := make([]byte, 24)
+	if _, err = rand.Read(ak); err != nil {
+		return "", "", err
+	}
+	accessKey = hex.EncodeToString(ak)
+
+	sk := make([]byte, 32)
+	if _, err = rand.Read(sk); err != nil {
+		return "", "", err
+	}
+	secretKey = hex.EncodeToString(sk)
+
+	if err = s.db.Model(&model.User{}).Where("id = ?", userID).
+		Updates(map[string]interface{}{
+			"access_key": accessKey,
+			"secret_key": secretKey,
+		}).Error; err != nil {
+		return "", "", err
+	}
+
+	return accessKey, secretKey, nil
 }

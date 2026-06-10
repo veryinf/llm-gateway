@@ -1,177 +1,276 @@
-import { useState } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import client from '@/api/client'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Badge } from '@/components/ui/badge'
-import toast from 'react-hot-toast'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
-import { PageHeader } from '@/components/page-header'
-
-interface User {
-  id: number
-  username: string
-  email: string
-  department: string
-  role: string
-  is_active: boolean
-  created_at: string
-}
+import { createFileRoute } from '@tanstack/react-router';
+import { useEffect, useState } from 'react';
+import type { ColumnDef } from '@tanstack/react-table';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Page, type PageInformation } from '@/components/full-page';
+import { FormFieldInput, FormFieldSelect } from '@/components/form';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Loading } from '@/components/loader';
+import { useModal } from '@/components/modal';
+import { useConfirm } from '@/components/confirm';
+import { userService, type User } from '@/services/user';
+import { apiKeyService, type CreateAPIKeyParams } from '@/services/api-key';
+import { useBreadcrumb } from '@/hooks/use-breadcrumb';
+import { toast } from 'sonner';
 
 export const Route = createFileRoute('/users')({
   component: UsersPage,
-})
+});
+
+const roleOptions = [
+  { label: '管理员', value: 'admin' },
+  { label: '普通用户', value: 'user' },
+  { label: '只读', value: 'viewer' },
+];
+
+const pageInformation: PageInformation = {
+  name: 'users',
+  entityName: '用户',
+  page: { title: '用户管理', description: '管理系统用户账号和权限' },
+  breadcrumbs: [{ title: '管理' }, { title: '用户管理' }],
+};
+
+const columns: ColumnDef<User, any>[] = [
+  {
+    accessorKey: 'username',
+    header: '用户名',
+    meta: { label: '用户名', viewDetail: true },
+  },
+  {
+    accessorKey: 'name',
+    header: '姓名',
+    meta: { label: '姓名', className: 'w-20' },
+  },
+  {
+    accessorKey: 'phone',
+    header: '手机号',
+    meta: { label: '手机号', className: 'w-28' },
+  },
+  {
+    accessorKey: 'department',
+    header: '部门',
+    meta: { label: '部门', className: 'w-24' },
+  },
+  {
+    accessorKey: 'role',
+    header: '角色',
+    meta: { label: '角色', className: 'w-[90px]' },
+    cell: ({ row }) => {
+      const role = row.original.role;
+      const variant = role === 'admin' ? 'default' : role === 'viewer' ? 'secondary' : 'outline';
+      return <Badge variant={variant}>{roleOptions.find((r) => r.value === role)?.label ?? role}</Badge>;
+    },
+  },
+  {
+    accessorKey: 'is_active',
+    header: '状态',
+    meta: { label: '状态', className: 'w-20' },
+    cell: ({ row }) => (
+      <Badge variant={row.original.is_active ? 'default' : 'destructive'}>
+        {row.original.is_active ? '启用' : '禁用'}
+      </Badge>
+    ),
+  },
+];
 
 function UsersPage() {
-  const queryClient = useQueryClient()
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingUser, setEditingUser] = useState<User | null>(null)
-  const [formData, setFormData] = useState({
-    username: '',
-    email: '',
-    password: '',
-    department: '',
-    role: 'user',
-  })
+  const { setBreadcrumbs } = useBreadcrumb();
 
-  const { data, isLoading } = useQuery<User[]>({
-    queryKey: ['users'],
-    queryFn: () => client.get('/admin/users') as Promise<User[]>,
-  })
-
-  const createMutation = useMutation({
-    mutationFn: (data: typeof formData) => client.post('/admin/users', data),
-    onSuccess: () => {
-      toast.success('创建成功')
-      queryClient.invalidateQueries({ queryKey: ['users'] })
-      setDialogOpen(false)
-      resetForm()
-    },
-  })
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, ...data }: { id: number } & Partial<typeof formData>) =>
-      client.put(`/admin/users/${id}`, data),
-    onSuccess: () => {
-      toast.success('更新成功')
-      queryClient.invalidateQueries({ queryKey: ['users'] })
-      setDialogOpen(false)
-      resetForm()
-    },
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => client.delete(`/admin/users/${id}`),
-    onSuccess: () => {
-      toast.success('删除成功')
-      queryClient.invalidateQueries({ queryKey: ['users'] })
-    },
-  })
-
-  const resetForm = () => {
-    setFormData({ username: '', email: '', password: '', department: '', role: 'user' })
-    setEditingUser(null)
-  }
-
-  const handleEdit = (user: User) => {
-    setEditingUser(user)
-    setFormData({
-      username: user.username,
-      email: user.email,
-      password: '',
-      department: user.department,
-      role: user.role,
-    })
-    setDialogOpen(true)
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (editingUser) {
-      updateMutation.mutate({ id: editingUser.id, ...formData })
-    } else {
-      createMutation.mutate(formData)
-    }
-  }
+  useEffect(() => {
+    setBreadcrumbs(pageInformation.breadcrumbs ?? []);
+  }, []);
 
   return (
-    <div className="flex flex-1 flex-col gap-4 py-4 md:py-6">
-      <div className="px-4 lg:px-6">
-        <PageHeader
-          title="用户管理"
-          description="管理系统用户和配额"
-          actions={
-            <Button onClick={() => { resetForm(); setDialogOpen(true) }}>
-              <Plus className="h-4 w-4 mr-2" />
-              添加用户
-            </Button>
-          }
-        />
-      </div>
-      <Card className="mx-4 lg:mx-6">
+    <Page<User>
+      infomation={pageInformation}
+      columns={columns}
+      service={userService}
+      options={{ showSelectColumn: false }}
+      renderViewDetail={(entity) => <UserDetail entity={entity} />}
+      formInitialValue={(_type, entity) => ({
+        id: entity?.id ?? 0,
+        username: entity?.username ?? '',
+        password: '',
+        name: entity?.name ?? '',
+        phone: entity?.phone ?? '',
+        department: entity?.department ?? '',
+        role: entity?.role ?? 'user',
+        is_active: entity?.is_active ?? true,
+        created_at: entity?.created_at ?? '',
+        updated_at: entity?.updated_at ?? '',
+      })}
+      renderViewAdd={(form) => (
+        <div className="flex flex-col gap-4">
+          <FormFieldInput form={form} name="username" title="用户名" required placeholder="请输入用户名" />
+          <FormFieldInput form={form} name="password" title="密码" required placeholder="请输入密码" type="password" />
+          <FormFieldInput form={form} name="name" title="姓名" placeholder="请输入姓名" />
+          <FormFieldInput form={form} name="phone" title="手机号" placeholder="请输入手机号" />
+          <FormFieldInput form={form} name="department" title="部门" placeholder="请输入部门" />
+          <FormFieldSelect form={form} name="role" title="角色" options={roleOptions} />
+        </div>
+      )}
+      renderViewUpdate={(form, _entity) => (
+        <div className="flex flex-col gap-4">
+          <FormFieldInput form={form} name="username" title="用户名" required />
+          <FormFieldInput form={form} name="name" title="姓名" placeholder="请输入姓名" />
+          <FormFieldInput form={form} name="phone" title="手机号" placeholder="请输入手机号" />
+          <FormFieldInput form={form} name="department" title="部门" placeholder="请输入部门" />
+          <FormFieldSelect form={form} name="role" title="角色" options={roleOptions} />
+        </div>
+      )}
+    />
+  );
+}
+
+function UserDetail({ entity }: { entity: User }) {
+  const uid = entity.id;
+  const queryClient = useQueryClient();
+  const { Modal, modalHandler } = useModal();
+  const { Confirm, confirmHandler } = useConfirm();
+  const [newKeyName, setNewKeyName] = useState('');
+  const [newKeyQuota, setNewKeyQuota] = useState('');
+  const [newKeyQpm, setNewKeyQpm] = useState('');
+  const [createdRawKey, setCreatedRawKey] = useState<string | null>(null);
+
+  const { data: apiKeys = [], isLoading: keysLoading } = useQuery({
+    queryKey: ['user-api-keys', uid],
+    queryFn: () => apiKeyService.listByUser(uid),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (keyId: number) => apiKeyService.delete(uid, keyId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user-api-keys', uid] });
+      toast.success('API Key 已删除');
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (params: CreateAPIKeyParams) => apiKeyService.create(uid, params),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['user-api-keys', uid] });
+      setCreatedRawKey(data.raw_key);
+      setNewKeyName('');
+      setNewKeyQuota('');
+      setNewKeyQpm('');
+      modalHandler.close();
+      toast.success('API Key 创建成功');
+    },
+    onError: () => {
+      toast.error('创建失败');
+    },
+  });
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* 用户信息卡片 */}
+      <Card className="border-t">
+        <CardHeader>
+          <CardTitle>用户信息</CardTitle>
+        </CardHeader>
         <CardContent>
-          {isLoading ? (
-            <div className="space-y-2">
-              {[...Array(5)].map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            <InfoRow label="用户名" value={entity.username} />
+            <InfoRow label="姓名" value={entity.name || '-'} />
+            <InfoRow label="手机号" value={entity.phone || '-'} />
+            <InfoRow label="部门" value={entity.department || '-'} />
+            <InfoRow
+              label="角色"
+              value={
+                <Badge variant={entity.role === 'admin' ? 'default' : 'outline'}>
+                  {roleOptions.find((r) => r.value === entity.role)?.label ?? entity.role}
+                </Badge>
+              }
+            />
+            <InfoRow
+              label="状态"
+              value={
+                <Badge variant={entity.is_active ? 'default' : 'destructive'}>
+                  {entity.is_active ? '启用' : '禁用'}
+                </Badge>
+              }
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* API Keys 卡片 */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>API Keys</CardTitle>
+          <Button
+            size="sm"
+            onClick={() => {
+              setCreatedRawKey(null);
+              modalHandler.open('创建 API Key');
+            }}
+          >
+            新增 Key
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {keysLoading ? (
+            <Loading size={20} />
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>用户名</TableHead>
-                  <TableHead>邮箱</TableHead>
-                  <TableHead>角色</TableHead>
-                  <TableHead>部门</TableHead>
+                  <TableHead>名称</TableHead>
+                  <TableHead>Key 前缀</TableHead>
+                  <TableHead>配额</TableHead>
+                  <TableHead>已使用</TableHead>
+                  <TableHead>QPM</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>创建时间</TableHead>
-                  <TableHead>操作</TableHead>
+                  <TableHead className="w-16">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data?.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.username}</TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell><Badge variant="outline">{user.role}</Badge></TableCell>
-                    <TableCell>{user.department || '-'}</TableCell>
-                    <TableCell>
-                      <Badge variant={user.is_active ? 'default' : 'secondary'}>
-                        {user.is_active ? '正常' : '禁用'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{user.created_at}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => handleEdit(user)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(user.id)}>
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {(!data || data.length === 0) && (
+                {apiKeys.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground">
-                      暂无数据
+                    <TableCell colSpan={8} className="text-muted-foreground text-center">
+                      暂无 API Key
                     </TableCell>
                   </TableRow>
+                ) : (
+                  apiKeys.map((key) => (
+                    <TableRow key={key.id}>
+                      <TableCell>{key.name}</TableCell>
+                      <TableCell className="font-mono text-xs">{key.key_prefix}...</TableCell>
+                      <TableCell>{key.quota_limit > 0 ? key.quota_limit.toLocaleString() : '不限'}</TableCell>
+                      <TableCell>{key.quota_used.toLocaleString()}</TableCell>
+                      <TableCell>{key.rate_limit_qpm || '不限'}</TableCell>
+                      <TableCell>
+                        <Badge variant={key.is_active ? 'default' : 'destructive'}>
+                          {key.is_active ? '启用' : '禁用'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{new Date(key.created_at).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive"
+                          onClick={() => {
+                            confirmHandler.confirmInvoke(
+                              '确认删除',
+                              async () => {
+                                await deleteMutation.mutateAsync(key.id);
+                                return true;
+                              },
+                              `确认要删除 API Key「${key.name}」吗？`,
+                              true,
+                            );
+                          }}
+                        >
+                          删除
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
                 )}
               </TableBody>
             </Table>
@@ -179,63 +278,86 @@ function UsersPage() {
         </CardContent>
       </Card>
 
-      {/* Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingUser ? '编辑用户' : '添加用户'}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="username">用户名</Label>
-              <Input
-                id="username"
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">邮箱</Label>
-              <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">
-                密码{editingUser ? '（留空则不修改）' : ''}
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                required={!editingUser}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="department">部门</Label>
-              <Input
-                id="department"
-                value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-              />
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
-                取消
-              </Button>
-              <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-                {editingUser ? '保存' : '创建'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {/* 创建成功提示 */}
+      {createdRawKey && (
+        <Card className="border-green-500">
+          <CardHeader>
+            <CardTitle className="text-green-600">API Key 创建成功</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground mb-2 text-sm">请立即复制保存，此 Key 仅显示一次：</p>
+            <code className="bg-muted block rounded p-3 text-sm break-all">{createdRawKey}</code>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              onClick={() => {
+                navigator.clipboard.writeText(createdRawKey);
+                toast.success('已复制到剪贴板');
+              }}
+            >
+              复制
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 创建 Key 弹窗 */}
+      <Modal>
+        <div className="flex flex-col gap-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">名称</label>
+            <input
+              value={newKeyName}
+              onChange={(e) => setNewKeyName(e.target.value)}
+              placeholder="例如: production-key"
+              className="border-input bg-background ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">配额限制 (0=不限)</label>
+            <input
+              type="number"
+              value={newKeyQuota}
+              onChange={(e) => setNewKeyQuota(e.target.value)}
+              placeholder="0"
+              className="border-input bg-background ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">QPM 限制 (0=不限)</label>
+            <input
+              type="number"
+              value={newKeyQpm}
+              onChange={(e) => setNewKeyQpm(e.target.value)}
+              placeholder="60"
+              className="border-input bg-background ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm"
+            />
+          </div>
+          <Button
+            disabled={!newKeyName || createMutation.isPending}
+            onClick={() => {
+              createMutation.mutate({
+                name: newKeyName,
+                quota_limit: Number(newKeyQuota) || 0,
+                rate_limit_qpm: Number(newKeyQpm) || 0,
+              });
+            }}
+          >
+            {createMutation.isPending ? '创建中...' : '创建'}
+          </Button>
+        </div>
+      </Modal>
+      <Confirm />
     </div>
-  )
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-muted-foreground text-sm">{label}:</span>
+      <span className="text-sm">{value}</span>
+    </div>
+  );
 }

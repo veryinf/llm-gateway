@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"llm-gateway/internal/middleware"
 	"llm-gateway/internal/model"
 	"llm-gateway/internal/service"
 	"llm-gateway/pkg/apierror"
@@ -63,12 +64,71 @@ func (h *AdminHandler) Login(c echo.Context) error {
 	return response.Success(c, loginResponse{Token: token})
 }
 
+// ======================== Profile ========================
+
+func (h *AdminHandler) Profile(c echo.Context) error {
+	userID, ok := c.Get(middleware.CtxKeyUserID).(uint)
+	if !ok {
+		return response.Error(c, apierror.Unauthorized("invalid user context"))
+	}
+
+	var user model.User
+	if err := h.db.First(&user, userID).Error; err != nil {
+		return response.Error(c, apierror.NotFound("user not found"))
+	}
+
+	return response.Success(c, user)
+}
+
+// ======================== AKSK Management ========================
+
+type akskResponse struct {
+	AccessKey string `json:"access_key"`
+	SecretKey string `json:"secret_key"`
+}
+
+// GenerateAKSK 为用户生成新的 AKSK 密钥对
+func (h *AdminHandler) GenerateAKSK(c echo.Context) error {
+	id, err := parseUintParam(c, "id")
+	if err != nil {
+		return response.Error(c, apierror.BadRequest("invalid user id"))
+	}
+
+	accessKey, secretKey, err := h.userSvc.GenerateAKSK(id)
+	if err != nil {
+		return response.Error(c, apierror.InternalError(err.Error()))
+	}
+
+	return response.Success(c, akskResponse{
+		AccessKey: accessKey,
+		SecretKey: secretKey,
+	})
+}
+
+// GetAKSK 获取用户的 access_key (不含 secret_key)
+func (h *AdminHandler) GetAKSK(c echo.Context) error {
+	id, err := parseUintParam(c, "id")
+	if err != nil {
+		return response.Error(c, apierror.BadRequest("invalid user id"))
+	}
+
+	var user model.User
+	if err := h.db.First(&user, id).Error; err != nil {
+		return response.Error(c, apierror.NotFound("user not found"))
+	}
+
+	return response.Success(c, map[string]string{
+		"access_key": user.AccessKey,
+	})
+}
+
 // ======================== User Management ========================
 
 type createUserRequest struct {
 	Username   string     `json:"username"`
 	Password   string     `json:"password"`
-	Email      string     `json:"email"`
+	Name       string     `json:"name"`
+	Phone      string     `json:"phone"`
 	Department string     `json:"department"`
 	Role       model.Role `json:"role"`
 }
@@ -90,7 +150,7 @@ func (h *AdminHandler) CreateUser(c echo.Context) error {
 		return response.Error(c, apierror.BadRequest("username and password are required"))
 	}
 
-	user, err := h.userSvc.CreateUser(req.Username, req.Password, req.Email, req.Department, req.Role)
+	user, err := h.userSvc.CreateUser(req.Username, req.Password, req.Name, req.Phone, req.Department, req.Role)
 	if err != nil {
 		return response.Error(c, apierror.InternalError(err.Error()))
 	}
@@ -106,6 +166,16 @@ func (h *AdminHandler) UpdateUser(c echo.Context) error {
 	var updates map[string]interface{}
 	if err := json.NewDecoder(c.Request().Body).Decode(&updates); err != nil {
 		return response.Error(c, apierror.BadRequest("invalid request: "+err.Error()))
+	}
+
+	delete(updates, "id")
+	delete(updates, "password")
+	delete(updates, "password_hash")
+	delete(updates, "created_at")
+	delete(updates, "updated_at")
+
+	if len(updates) == 0 {
+		return response.Success(c, nil)
 	}
 
 	if err := h.db.Model(&model.User{}).Where("id = ?", id).Updates(updates).Error; err != nil {
@@ -209,6 +279,25 @@ func (h *AdminHandler) DeleteAPIKeyByID(c echo.Context) error {
 		return response.Error(c, apierror.InternalError(err.Error()))
 	}
 	return response.Success(c, nil)
+}
+
+// ToggleAPIKey toggles the active status of an API key.
+func (h *AdminHandler) ToggleAPIKey(c echo.Context) error {
+	id, err := parseUintParam(c, "id")
+	if err != nil {
+		return response.Error(c, apierror.BadRequest("invalid api key id"))
+	}
+
+	var key model.APIKey
+	if err := h.db.First(&key, id).Error; err != nil {
+		return response.Error(c, apierror.NotFound("api key not found"))
+	}
+
+	if err := h.db.Model(&key).Update("is_active", !key.IsActive).Error; err != nil {
+		return response.Error(c, apierror.InternalError(err.Error()))
+	}
+
+	return response.Success(c, map[string]interface{}{"is_active": !key.IsActive})
 }
 
 // ======================== Provider Management ========================
@@ -333,6 +422,46 @@ func (h *AdminHandler) UpdateModel(c echo.Context) error {
 	_ = h.providerSvc.ReloadProviders()
 
 	return response.Success(c, nil)
+}
+
+// ======================== Config Management ========================
+
+type configUpdateRequest struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+func (h *AdminHandler) ListConfigs(c echo.Context) error {
+	var configs []model.Config
+	if err := h.db.Find(&configs).Error; err != nil {
+		return response.Error(c, apierror.InternalError(err.Error()))
+	}
+	return response.Success(c, configs)
+}
+
+func (h *AdminHandler) UpdateConfig(c echo.Context) error {
+	var req configUpdateRequest
+	if err := json.NewDecoder(c.Request().Body).Decode(&req); err != nil {
+		return response.Error(c, apierror.BadRequest("invalid request: "+err.Error()))
+	}
+	if req.Key == "" {
+		return response.Error(c, apierror.BadRequest("key is required"))
+	}
+
+	var config model.Config
+	if err := h.db.Where("`key` = ?", req.Key).First(&config).Error; err != nil {
+		config = model.Config{Key: req.Key, Value: req.Value}
+		if err := h.db.Create(&config).Error; err != nil {
+			return response.Error(c, apierror.InternalError(err.Error()))
+		}
+		return response.Success(c, config)
+	}
+
+	config.Value = req.Value
+	if err := h.db.Save(&config).Error; err != nil {
+		return response.Error(c, apierror.InternalError(err.Error()))
+	}
+	return response.Success(c, config)
 }
 
 // ======================== Helpers ========================

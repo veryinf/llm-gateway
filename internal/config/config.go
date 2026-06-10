@@ -21,7 +21,8 @@ type ServerConfig struct {
 }
 
 type DatabaseConfig struct {
-	Path string `mapstructure:"path"`
+	Path       string `mapstructure:"path"`
+	DuckDBPath string `mapstructure:"duckdb_path"`
 }
 
 type AuthConfig struct {
@@ -49,7 +50,8 @@ type StatsConfig struct {
 }
 
 type AuditConfig struct {
-	RetentionDays int `mapstructure:"retention_days"`
+	RetentionDays     int `mapstructure:"retention_days"`
+	StatsRetentionDays int `mapstructure:"stats_retention_days"`
 }
 
 func ParseFlags() *Config {
@@ -57,7 +59,8 @@ func ParseFlags() *Config {
 
 	flag.IntVar(&cfg.Server.Port, "port", 3001, "server port")
 	flag.StringVar(&cfg.Server.Host, "host", "0.0.0.0", "server host")
-	flag.StringVar(&cfg.Database.Path, "db-path", "./data/llm_gateway.db", "SQLite database path")
+	flag.StringVar(&cfg.Database.Path, "db-path", "./data/application.db", "SQLite database path")
+	flag.StringVar(&cfg.Database.DuckDBPath, "duckdb-path", "./data/store.db", "DuckDB analytics database path")
 
 	flag.StringVar(&cfg.Auth.AdminPassword, "admin-password", "", "admin password (empty = skip creation)")
 	flag.StringVar(&cfg.Auth.JWTSecret, "jwt-secret", "change-me-in-production", "JWT signing secret")
@@ -71,6 +74,7 @@ func ParseFlags() *Config {
 	flag.IntVar(&cfg.Stats.FlushBatch, "stats-flush-batch", 100, "stats flush batch size")
 
 	flag.IntVar(&cfg.Audit.RetentionDays, "audit-retention-days", 90, "audit log retention days")
+	flag.IntVar(&cfg.Audit.StatsRetentionDays, "stats-retention-days", 90, "request log retention days")
 
 	flag.Parse()
 

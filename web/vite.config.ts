@@ -1,28 +1,34 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
-import tailwindcss from '@tailwindcss/vite'
+import { defineConfig } from 'vite';
+import viteReact from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 
+import { tanstackRouter } from '@tanstack/router-plugin/vite';
+import { fileURLToPath, URL } from 'node:url';
+
+// https://vitejs.dev/config/
 export default defineConfig({
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+    },
+    hmr: {},
+  },
   plugins: [
-    TanStackRouterVite({ routesDirectory: 'src/routes', generatedRouteTree: 'src/routeTree.gen.ts' }),
-    react(),
+    // devtools(), // Disable devtools temporarily due to port conflict
+    tanstackRouter({
+      target: 'react',
+      autoCodeSplitting: true,
+    }),
+    viteReact(),
     tailwindcss(),
   ],
+  //base: '/',
   resolve: {
     alias: {
-      '@': '/src',
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
-  server: {
-    port: 5173,
-    proxy: {
-      '/api/admin': { target: 'http://localhost:3001', changeOrigin: true },
-      '/api/stats': { target: 'http://localhost:3001', changeOrigin: true },
-      '/api/audit': { target: 'http://localhost:3001', changeOrigin: true },
-      '/api/dashboard': { target: 'http://localhost:3001', changeOrigin: true },
-      '/api/login': { target: 'http://localhost:3001', changeOrigin: true },
-      '/v1': { target: 'http://localhost:3001', changeOrigin: true },
-    },
-  },
-})
+});

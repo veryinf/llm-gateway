@@ -15,7 +15,7 @@ func setupAPIKeyDB(t *testing.T) (*gorm.DB, *UserService, *APIKeyService) {
 	userSvc := NewUserService(db, "test-secret")
 	apiKeySvc := NewAPIKeyService(db)
 
-	_, err := userSvc.CreateUser("testuser", "password", "test@test.com", "Dept", "user")
+	_, err := userSvc.CreateUser("testuser", "password", "测试", "13800138000", "Dept", model.RoleUser)
 	if err != nil {
 		t.Fatalf("failed to create test user: %v", err)
 	}

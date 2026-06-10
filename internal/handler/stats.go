@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"database/sql"
+	"strconv"
+	"strings"
 	"time"
 
 	"llm-gateway/internal/model"
@@ -12,11 +15,12 @@ import (
 )
 
 type StatsHandler struct {
-	db *gorm.DB
+	db     *sql.DB
+	sqlite *gorm.DB
 }
 
-func NewStatsHandler(db *gorm.DB) *StatsHandler {
-	return &StatsHandler{db: db}
+func NewStatsHandler(db *sql.DB, sqlite *gorm.DB) *StatsHandler {
+	return &StatsHandler{db: db, sqlite: sqlite}
 }
 
 // ======================== Token Stats ========================
@@ -37,21 +41,67 @@ func (h *StatsHandler) TokenStats(c echo.Context) error {
 		return response.Error(c, apierror.BadRequest(err.Error()))
 	}
 
-	var results []tokenStatsItem
-	query := h.db.Model(&model.RequestLog{}).
-		Select("request_logs.user_id, request_logs.model_name, SUM(request_logs.prompt_tokens) as prompt_tokens, SUM(request_logs.completion_tokens) as completion_tokens, SUM(request_logs.total_tokens) as total_tokens").
-		Joins("LEFT JOIN users ON users.id = request_logs.user_id").
-		Where("request_logs.created_at BETWEEN ? AND ?", start, end).
-		Where("request_logs.status_code = 200").
-		Group("request_logs.user_id, request_logs.model_name").
-		Order("total_tokens DESC")
+	query := `SELECT user_id, model_name,
+		SUM(prompt_tokens) as prompt_tokens,
+		SUM(completion_tokens) as completion_tokens,
+		SUM(total_tokens) as total_tokens
+		FROM request_logs
+		WHERE created_at BETWEEN ? AND ? AND status_code = 200`
+
+	args := []interface{}{start, end}
 
 	if dept := c.QueryParam("department"); dept != "" {
-		query = query.Where("users.department = ?", dept)
+		var userIDs []uint
+		h.sqlite.Model(&model.User{}).Where("department = ?", dept).Pluck("id", &userIDs)
+		if len(userIDs) == 0 {
+			return response.Success(c, []tokenStatsItem{})
+		}
+		placeholders := make([]string, len(userIDs))
+		for i, uid := range userIDs {
+			placeholders[i] = "?"
+			args = append(args, uid)
+		}
+		query += " AND user_id IN (" + strings.Join(placeholders, ",") + ")"
 	}
 
-	if err := query.Find(&results).Error; err != nil {
+	query += " GROUP BY user_id, model_name ORDER BY total_tokens DESC"
+
+	rows, err := h.db.Query(query, args...)
+	if err != nil {
 		return response.Error(c, apierror.InternalError(err.Error()))
+	}
+	defer rows.Close()
+
+	var results []tokenStatsItem
+	userIDs := make(map[uint]bool)
+	for rows.Next() {
+		var item tokenStatsItem
+		if err := rows.Scan(&item.UserID, &item.ModelName, &item.PromptTokens, &item.CompletionTokens, &item.TotalTokens); err != nil {
+			return response.Error(c, apierror.InternalError(err.Error()))
+		}
+		results = append(results, item)
+		userIDs[item.UserID] = true
+	}
+
+	if len(results) == 0 {
+		return response.Success(c, []tokenStatsItem{})
+	}
+
+	ids := make([]uint, 0, len(userIDs))
+	for id := range userIDs {
+		ids = append(ids, id)
+	}
+	var users []model.User
+	h.sqlite.Where("id IN ?", ids).Find(&users)
+	userMap := make(map[uint]*model.User, len(users))
+	for i := range users {
+		userMap[users[i].ID] = &users[i]
+	}
+	for i := range results {
+		if u, ok := userMap[results[i].UserID]; ok {
+			results[i].Username = u.Username
+			results[i].Department = u.Department
+		}
 	}
 
 	return response.Success(c, results)
@@ -73,19 +123,36 @@ func (h *StatsHandler) RequestStats(c echo.Context) error {
 		return response.Error(c, apierror.BadRequest(err.Error()))
 	}
 
-	var results []requestCountItem
-	query := h.db.Model(&model.RequestLog{}).
-		Select("DATE(created_at) as date, COUNT(*) as request_count, "+
-			"SUM(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 ELSE 0 END) as success_count, "+
-			"SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as error_count, "+
-			"AVG(latency_ms) as avg_latency_ms").
-		Where("created_at BETWEEN ? AND ?", start, end)
+	query := `SELECT CAST(DATE(created_at) AS VARCHAR) as date,
+		COUNT(*) as request_count,
+		SUM(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 ELSE 0 END) as success_count,
+		SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as error_count,
+		CAST(AVG(latency_ms) AS BIGINT) as avg_latency_ms
+		FROM request_logs
+		WHERE created_at BETWEEN ? AND ?`
 
-	query = applyRequestFilters(query, c)
-	query = query.Group("DATE(created_at)").Order("date ASC")
+	args := []interface{}{start, end}
+	query, args = applyRequestFilters(query, args, c)
 
-	if err := query.Find(&results).Error; err != nil {
+	query += " GROUP BY DATE(created_at) ORDER BY date ASC"
+
+	rows, err := h.db.Query(query, args...)
+	if err != nil {
 		return response.Error(c, apierror.InternalError(err.Error()))
+	}
+	defer rows.Close()
+
+	var results []requestCountItem
+	for rows.Next() {
+		var item requestCountItem
+		if err := rows.Scan(&item.Date, &item.RequestCount, &item.SuccessCount, &item.ErrorCount, &item.AvgLatencyMs); err != nil {
+			return response.Error(c, apierror.InternalError(err.Error()))
+		}
+		results = append(results, item)
+	}
+
+	if results == nil {
+		results = []requestCountItem{}
 	}
 
 	return response.Success(c, results)
@@ -105,16 +172,30 @@ func (h *StatsHandler) CostStats(c echo.Context) error {
 		return response.Error(c, apierror.BadRequest(err.Error()))
 	}
 
-	var results []costStatsItem
-	query := h.db.Model(&model.RequestLog{}).
-		Select("DATE(created_at) as date, model_name, SUM(cost) as total_cost").
-		Where("created_at BETWEEN ? AND ?", start, end).
-		Where("status_code = 200").
-		Group("DATE(created_at), model_name").
-		Order("date ASC")
+	query := `SELECT CAST(DATE(created_at) AS VARCHAR) as date,
+		model_name, SUM(cost) as total_cost
+		FROM request_logs
+		WHERE created_at BETWEEN ? AND ? AND status_code = 200
+		GROUP BY DATE(created_at), model_name
+		ORDER BY date ASC`
 
-	if err := query.Find(&results).Error; err != nil {
+	rows, err := h.db.Query(query, start, end)
+	if err != nil {
 		return response.Error(c, apierror.InternalError(err.Error()))
+	}
+	defer rows.Close()
+
+	var results []costStatsItem
+	for rows.Next() {
+		var item costStatsItem
+		if err := rows.Scan(&item.Date, &item.ModelName, &item.TotalCost); err != nil {
+			return response.Error(c, apierror.InternalError(err.Error()))
+		}
+		results = append(results, item)
+	}
+
+	if results == nil {
+		results = []costStatsItem{}
 	}
 
 	return response.Success(c, results)
@@ -136,19 +217,51 @@ func (h *StatsHandler) BehaviorStats(c echo.Context) error {
 		return response.Error(c, apierror.BadRequest(err.Error()))
 	}
 
-	var results []behaviorItem
-	query := h.db.Model(&model.RequestLog{}).
-		Joins("LEFT JOIN users ON users.id = request_logs.user_id").
-		Select("user_id, users.username, users.department, model_name, COUNT(*) as count").
-		Where("request_logs.created_at BETWEEN ? AND ?", start, end)
+	query := `SELECT user_id, model_name, COUNT(*) as count
+		FROM request_logs
+		WHERE created_at BETWEEN ? AND ?`
 
-	query = applyRequestFilters(query, c)
-	query = query.Group("user_id, model_name").
-		Order("count DESC").
-		Limit(100)
+	args := []interface{}{start, end}
+	query, args = applyRequestFilters(query, args, c)
 
-	if err := query.Find(&results).Error; err != nil {
+	query += " GROUP BY user_id, model_name ORDER BY count DESC LIMIT 100"
+
+	rows, err := h.db.Query(query, args...)
+	if err != nil {
 		return response.Error(c, apierror.InternalError(err.Error()))
+	}
+	defer rows.Close()
+
+	var results []behaviorItem
+	userIDs := make(map[uint]bool)
+	for rows.Next() {
+		var item behaviorItem
+		if err := rows.Scan(&item.UserID, &item.ModelName, &item.Count); err != nil {
+			return response.Error(c, apierror.InternalError(err.Error()))
+		}
+		results = append(results, item)
+		userIDs[item.UserID] = true
+	}
+
+	if len(results) == 0 {
+		return response.Success(c, []behaviorItem{})
+	}
+
+	ids := make([]uint, 0, len(userIDs))
+	for id := range userIDs {
+		ids = append(ids, id)
+	}
+	var users []model.User
+	h.sqlite.Where("id IN ?", ids).Find(&users)
+	userMap := make(map[uint]*model.User, len(users))
+	for i := range users {
+		userMap[users[i].ID] = &users[i]
+	}
+	for i := range results {
+		if u, ok := userMap[results[i].UserID]; ok {
+			results[i].Username = u.Username
+			results[i].Department = u.Department
+		}
 	}
 
 	return response.Success(c, results)
@@ -189,13 +302,21 @@ func (h *StatsHandler) DashboardOverview(c echo.Context) error {
 	}
 
 	var agg aggResult
-	h.db.Model(&model.RequestLog{}).
-		Select("COUNT(*) as total_requests, COALESCE(SUM(total_tokens), 0) as total_tokens, "+
-			"COALESCE(SUM(cost), 0) as total_cost, COALESCE(AVG(latency_ms), 0) as avg_latency, "+
-			"SUM(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 ELSE 0 END) as success_count, "+
-			"COUNT(DISTINCT user_id) as active_users").
-		Where("created_at BETWEEN ? AND ?", start, end).
-		Scan(&agg)
+	err = h.db.QueryRow(`SELECT
+		COUNT(*) as total_requests,
+		COALESCE(SUM(total_tokens), 0) as total_tokens,
+		COALESCE(SUM(cost), 0) as total_cost,
+		COALESCE(AVG(latency_ms), 0) as avg_latency,
+		SUM(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 ELSE 0 END) as success_count,
+		COUNT(DISTINCT user_id) as active_users
+		FROM request_logs
+		WHERE created_at BETWEEN ? AND ?`, start, end).Scan(
+		&agg.TotalRequests, &agg.TotalTokens, &agg.TotalCost,
+		&agg.AvgLatency, &agg.SuccessCount, &agg.ActiveUsers,
+	)
+	if err != nil {
+		return response.Error(c, apierror.InternalError(err.Error()))
+	}
 
 	overview.TotalRequests = agg.TotalRequests
 	overview.TotalTokens = agg.TotalTokens
@@ -207,13 +328,28 @@ func (h *StatsHandler) DashboardOverview(c echo.Context) error {
 		overview.SuccessRate = float64(agg.SuccessCount) / float64(agg.TotalRequests) * 100
 	}
 
-	h.db.Model(&model.RequestLog{}).
-		Select("model_name, COUNT(*) as count").
-		Where("created_at BETWEEN ? AND ?", start, end).
-		Group("model_name").
-		Order("count DESC").
-		Limit(10).
-		Find(&overview.TopModels)
+	topRows, err := h.db.Query(`SELECT model_name, COUNT(*) as count
+		FROM request_logs
+		WHERE created_at BETWEEN ? AND ?
+		GROUP BY model_name
+		ORDER BY count DESC
+		LIMIT 10`, start, end)
+	if err != nil {
+		return response.Error(c, apierror.InternalError(err.Error()))
+	}
+	defer topRows.Close()
+
+	for topRows.Next() {
+		var item topModelItem
+		if err := topRows.Scan(&item.ModelName, &item.Count); err != nil {
+			return response.Error(c, apierror.InternalError(err.Error()))
+		}
+		overview.TopModels = append(overview.TopModels, item)
+	}
+
+	if overview.TopModels == nil {
+		overview.TopModels = []topModelItem{}
+	}
 
 	return response.Success(c, overview)
 }
@@ -251,12 +387,16 @@ func parseTimeRange(c echo.Context) (time.Time, time.Time, error) {
 	return start, end, nil
 }
 
-func applyRequestFilters(query *gorm.DB, c echo.Context) *gorm.DB {
+func applyRequestFilters(query string, args []interface{}, c echo.Context) (string, []interface{}) {
 	if uid := c.QueryParam("user_id"); uid != "" {
-		query = query.Where("user_id = ?", uid)
+		if _, err := strconv.ParseUint(uid, 10, 64); err == nil {
+			query += " AND user_id = ?"
+			args = append(args, uid)
+		}
 	}
-	if model := c.QueryParam("model"); model != "" {
-		query = query.Where("model_name = ?", model)
+	if modelName := c.QueryParam("model"); modelName != "" {
+		query += " AND model_name = ?"
+		args = append(args, modelName)
 	}
-	return query
+	return query, args
 }

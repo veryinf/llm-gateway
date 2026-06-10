@@ -1,17 +1,33 @@
-import { useCallback, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { fetchProfile, logout, type SessionUser } from '@/services/auth';
 
 export function useAuth() {
-  const token = useMemo(() => localStorage.getItem('token'), [])
+  const token = localStorage.getItem('accessToken');
+  const queryClient = useQueryClient();
 
-  const isAuthenticated = useMemo(() => !!token, [token])
+  const { data: user, isLoading } = useQuery({
+    queryKey: ['current-user'],
+    queryFn: fetchProfile,
+    enabled: !!token,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: false,
+    gcTime: 0,
+    staleTime: Infinity,
+  });
 
-  const login = useCallback((newToken: string) => {
-    localStorage.setItem('token', newToken)
-  }, [])
-
-  const logout = useCallback(() => {
-    localStorage.removeItem('token')
-  }, [])
-
-  return { token, isAuthenticated, login, logout, loading: false }
+  return {
+    isAuthenticated: !!user,
+    user: user as SessionUser | null,
+    loading: isLoading,
+    refresh() {
+      return queryClient.invalidateQueries({ queryKey: ['current-user'] });
+    },
+    logout() {
+      logout();
+      queryClient.setQueryData(['current-user'], null);
+      queryClient.removeQueries({ queryKey: ['current-user'] });
+    },
+  };
 }

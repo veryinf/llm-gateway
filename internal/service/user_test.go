@@ -78,7 +78,7 @@ func TestUserService_CreateUser(t *testing.T) {
 	db := setupTestDB(t)
 	svc := NewUserService(db, "test-secret")
 
-	user, err := svc.CreateUser("testuser", "pass123", "test@example.com", "Engineering", model.RoleUser)
+	user, err := svc.CreateUser("testuser", "pass123", "张三", "13800138000", "Engineering", model.RoleUser)
 	if err != nil {
 		t.Fatalf("failed to create user: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestUserService_CreateUser(t *testing.T) {
 		t.Errorf("expected role user, got %s", user.Role)
 	}
 
-	_, err = svc.CreateUser("testuser", "pass456", "test2@example.com", "Engineering", model.RoleUser)
+	_, err = svc.CreateUser("testuser", "pass456", "李四", "13900139000", "Engineering", model.RoleUser)
 	if err == nil {
 		t.Error("expected error for duplicate username")
 	}
@@ -99,8 +99,8 @@ func TestUserService_ListUsers(t *testing.T) {
 	db := setupTestDB(t)
 	svc := NewUserService(db, "test-secret")
 
-	_, _ = svc.CreateUser("user1", "pass1", "u1@test.com", "DeptA", model.RoleUser)
-	_, _ = svc.CreateUser("user2", "pass2", "u2@test.com", "DeptB", model.RoleViewer)
+	_, _ = svc.CreateUser("user1", "pass1", "王五", "13700137000", "DeptA", model.RoleUser)
+	_, _ = svc.CreateUser("user2", "pass2", "赵六", "13600136000", "DeptB", model.RoleViewer)
 
 	var users []model.User
 	if err := db.Find(&users).Error; err != nil {
@@ -115,11 +115,11 @@ func TestUserService_UpdateUser(t *testing.T) {
 	db := setupTestDB(t)
 	svc := NewUserService(db, "test-secret")
 
-	user, _ := svc.CreateUser("update-user", "pass", "up@test.com", "Dept", model.RoleUser)
+	user, _ := svc.CreateUser("update-user", "pass", "测试", "13500135000", "Dept", model.RoleUser)
 
 	err := db.Model(&model.User{}).Where("id = ?", user.ID).Updates(map[string]interface{}{
 		"department": "NewDept",
-		"email":      "updated@test.com",
+		"name":       "新名字",
 	}).Error
 	if err != nil {
 		t.Fatalf("update failed: %v", err)

@@ -1,17 +1,12 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useEffect } from 'react'
+import { createFileRoute, redirect } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/')({
-  component: IndexPage,
-})
+  loader: () => {
+    throw redirect({ to: '/dashboard' });
+  },
+  component: Home,
+});
 
-function IndexPage() {
-  const navigate = useNavigate()
-  const token = localStorage.getItem('token')
-
-  useEffect(() => {
-    navigate({ to: token ? '/dashboard' : '/login', replace: true })
-  }, [])
-
-  return null
+function Home() {
+  return null;
 }

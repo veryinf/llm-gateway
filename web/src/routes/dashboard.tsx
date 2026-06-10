@@ -1,150 +1,169 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
-import client from '@/api/client'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { BarChart3, Activity, Coins, Users } from 'lucide-react'
-
-interface OverviewData {
-  total_requests: number
-  total_tokens: number
-  total_cost: number
-  active_users: number
-  top_models: Array<{
-    model_name: string
-    count: number
-  }>
-}
+import { createFileRoute } from '@tanstack/react-router';
+import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { statsService, type RequestStat } from '@/services/stats';
+import { useBreadcrumb } from '@/hooks/use-breadcrumb';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { Loading } from '@/components/loader';
 
 export const Route = createFileRoute('/dashboard')({
   component: DashboardPage,
-})
+});
+
+function getDefaultDateRange() {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - 7);
+  return {
+    start: start.toISOString().split('T')[0],
+    end: end.toISOString().split('T')[0],
+  };
+}
 
 function DashboardPage() {
-  const { data, isLoading } = useQuery<OverviewData>({
-    queryKey: ['dashboard-overview'],
-    queryFn: () => client.get('/dashboard/overview') as Promise<OverviewData>,
-  })
+  const { setBreadcrumbs } = useBreadcrumb();
+  const [dateRange, setDateRange] = useState(getDefaultDateRange);
 
-  const stats = [
-    {
-      title: '总请求数',
-      value: data?.total_requests ?? 0,
-      icon: Activity,
-      description: '所有 API 请求总量',
-      color: 'text-blue-600',
-      bgColor: 'bg-blue-50',
-    },
-    {
-      title: '总 Token',
-      value: data?.total_tokens ?? 0,
-      icon: BarChart3,
-      description: 'Token 消耗总量',
-      color: 'text-green-600',
-      bgColor: 'bg-green-50',
-    },
-    {
-      title: '总费用',
-      value: data?.total_cost?.toFixed(4) ?? '0.0000',
-      icon: Coins,
-      description: '累计 API 费用',
-      color: 'text-yellow-600',
-      bgColor: 'bg-yellow-50',
-    },
-    {
-      title: '活跃用户',
-      value: data?.active_users ?? 0,
-      icon: Users,
-      description: '已注册用户数',
-      color: 'text-purple-600',
-      bgColor: 'bg-purple-50',
-    },
-  ]
+  useEffect(() => {
+    setBreadcrumbs([{ title: 'Dashboard' }]);
+  }, []);
+
+  const { data: overview, isLoading: overviewLoading } = useQuery({
+    queryKey: ['dashboard-overview', dateRange],
+    queryFn: () => statsService.fetchOverview(dateRange.start, dateRange.end),
+  });
+
+  const { data: requestStats, isLoading: requestLoading } = useQuery({
+    queryKey: ['dashboard-requests', dateRange],
+    queryFn: () => statsService.fetchRequests(dateRange.start, dateRange.end),
+  });
+
+  if (overviewLoading || requestLoading) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-8">
+        <Loading size={32} />
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-1 flex-col">
-      <div className="@container/main flex flex-1 flex-col gap-2">
-        <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-          <div className="hidden h-full flex-1 flex-col gap-8 pt-0 pb-0 p-8 md:flex">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex flex-col gap-1">
-                <h2 className="text-2xl font-semibold tracking-tight">欢迎回来！</h2>
-                <p className="text-muted-foreground">这里是您的 LLM Gateway 仪表板概览。</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Stat Cards */}
-          <div className="grid grid-cols-1 gap-4 px-4 sm:grid-cols-2 lg:grid-cols-4 lg:px-6">
-            {stats.map((stat) => (
-              <Card key={stat.title} className="relative overflow-hidden">
-                <CardHeader className="pb-2">
-                  <CardDescription className="flex items-center gap-1.5">
-                    <stat.icon className={`size-4 ${stat.color}`} />
-                    {stat.title}
-                  </CardDescription>
-                  <CardTitle className="text-2xl font-semibold tabular-nums">
-                    {isLoading ? (
-                      <span className="inline-block h-7 w-16 animate-pulse rounded bg-muted" />
-                    ) : (
-                      stat.value
-                    )}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground text-xs">{stat.description}</p>
-                </CardContent>
-                <div
-                  className={`absolute -right-4 -top-4 size-20 rounded-full opacity-10 ${stat.bgColor}`}
-                />
-              </Card>
-            ))}
-          </div>
-
-          {/* Model Ranking */}
-          <div className="px-4 lg:px-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>模型排行</CardTitle>
-                <CardDescription>按请求量排序的模型使用情况</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {isLoading ? (
-                  <div className="space-y-2">
-                    {[...Array(5)].map((_, i) => (
-                      <span key={i} className="block h-8 w-full animate-pulse rounded bg-muted" />
-                    ))}
-                  </div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>模型</TableHead>
-                        <TableHead>请求数</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {data?.top_models?.map((item) => (
-                        <TableRow key={item.model_name}>
-                          <TableCell className="font-medium">{item.model_name}</TableCell>
-                          <TableCell>{item.count}</TableCell>
-                        </TableRow>
-                      ))}
-                      {(!data?.top_models || data.top_models.length === 0) && (
-                        <TableRow>
-                          <TableCell colSpan={2} className="text-center text-muted-foreground">
-                            暂无数据
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+    <div className="flex flex-1 flex-col gap-4 p-4">
+      <div className="flex items-center gap-4">
+        <h2 className="text-2xl font-semibold tracking-tight">Dashboard</h2>
+        <div className="ml-auto flex items-center gap-2">
+          <input
+            type="date"
+            value={dateRange.start}
+            onChange={(e) => setDateRange((r) => ({ ...r, start: e.target.value }))}
+            className="border-input bg-background ring-ring h-9 rounded-md border px-3 text-sm"
+          />
+          <span className="text-muted-foreground">-</span>
+          <input
+            type="date"
+            value={dateRange.end}
+            onChange={(e) => setDateRange((r) => ({ ...r, end: e.target.value }))}
+            className="border-input bg-background ring-ring h-9 rounded-md border px-3 text-sm"
+          />
         </div>
       </div>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <StatCard title="总请求数" value={overview?.total_requests} format="number" />
+        <StatCard title="总 Token" value={overview?.total_tokens} format="number" />
+        <StatCard title="总费用" value={overview?.total_cost} prefix="¥" format="decimal" />
+        <StatCard title="平均延迟" value={overview?.avg_latency_ms} suffix="ms" format="number" />
+        <StatCard title="成功率" value={overview?.success_rate} suffix="%" format="decimal" />
+        <StatCard title="活跃用户" value={overview?.active_users} format="number" />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>请求趋势</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RequestsChart data={requestStats ?? []} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Top 模型</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TopModelsChart data={overview?.top_models ?? []} />
+          </CardContent>
+        </Card>
+      </div>
     </div>
-  )
+  );
+}
+
+function StatCard({
+  title,
+  value,
+  prefix,
+  suffix,
+  format,
+}: {
+  title: string;
+  value?: number;
+  prefix?: string;
+  suffix?: string;
+  format: 'number' | 'decimal';
+}) {
+  const display = value != null ? (format === 'decimal' ? value.toFixed(2) : value.toLocaleString()) : '-';
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-muted-foreground text-sm">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold">
+          {prefix}
+          {display}
+          {suffix}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RequestsChart({ data }: { data: RequestStat[] }) {
+  if (!data.length) {
+    return <div className="text-muted-foreground flex h-[300px] items-center justify-center text-sm">暂无数据</div>;
+  }
+
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <LineChart data={data}>
+        <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+        <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+        <YAxis tick={{ fontSize: 12 }} />
+        <Tooltip />
+        <Line type="monotone" dataKey="request_count" name="总请求" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={false} />
+        <Line type="monotone" dataKey="success_count" name="成功" stroke="hsl(var(--chart-2))" strokeWidth={2} dot={false} />
+        <Line type="monotone" dataKey="error_count" name="失败" stroke="hsl(var(--chart-5))" strokeWidth={2} dot={false} />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
+function TopModelsChart({ data }: { data: { model_name: string; count: number }[] }) {
+  if (!data.length) {
+    return <div className="text-muted-foreground flex h-[300px] items-center justify-center text-sm">暂无数据</div>;
+  }
+
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <BarChart data={data} layout="vertical">
+        <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+        <XAxis type="number" tick={{ fontSize: 12 }} />
+        <YAxis type="category" dataKey="model_name" tick={{ fontSize: 12 }} width={120} />
+        <Tooltip />
+        <Bar dataKey="count" name="请求数" fill="hsl(var(--chart-1))" radius={[0, 4, 4, 0]} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
 }

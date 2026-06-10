@@ -10,24 +10,19 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UsersRouteImport } from './routes/users'
-import { Route as StatsRouteImport } from './routes/stats'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ProvidersRouteImport } from './routes/providers'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as DocsRouteImport } from './routes/docs'
+import { Route as ModelsRouteImport } from './routes/models'
 import { Route as DashboardRouteImport } from './routes/dashboard'
-import { Route as AuditRouteImport } from './routes/audit'
-import { Route as ApiKeysRouteImport } from './routes/api-keys'
+import { Route as AuditLogsRouteImport } from './routes/audit-logs'
+import { Route as AppKeysRouteImport } from './routes/app-keys'
+import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthLoginRouteImport } from './routes/auth/login'
 
 const UsersRoute = UsersRouteImport.update({
   id: '/users',
   path: '/users',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const StatsRoute = StatsRouteImport.update({
-  id: '/stats',
-  path: '/stats',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -40,14 +35,9 @@ const ProvidersRoute = ProvidersRouteImport.update({
   path: '/providers',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DocsRoute = DocsRouteImport.update({
-  id: '/docs',
-  path: '/docs',
+const ModelsRoute = ModelsRouteImport.update({
+  id: '/models',
+  path: '/models',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -55,14 +45,19 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuditRoute = AuditRouteImport.update({
-  id: '/audit',
-  path: '/audit',
+const AuditLogsRoute = AuditLogsRouteImport.update({
+  id: '/audit-logs',
+  path: '/audit-logs',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiKeysRoute = ApiKeysRouteImport.update({
-  id: '/api-keys',
-  path: '/api-keys',
+const AppKeysRoute = AppKeysRouteImport.update({
+  id: '/app-keys',
+  path: '/app-keys',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AnalyticsRoute = AnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -70,94 +65,99 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthLoginRoute = AuthLoginRouteImport.update({
+  id: '/auth/login',
+  path: '/auth/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/api-keys': typeof ApiKeysRoute
-  '/audit': typeof AuditRoute
+  '/analytics': typeof AnalyticsRoute
+  '/app-keys': typeof AppKeysRoute
+  '/audit-logs': typeof AuditLogsRoute
   '/dashboard': typeof DashboardRoute
-  '/docs': typeof DocsRoute
-  '/login': typeof LoginRoute
+  '/models': typeof ModelsRoute
   '/providers': typeof ProvidersRoute
   '/settings': typeof SettingsRoute
-  '/stats': typeof StatsRoute
   '/users': typeof UsersRoute
+  '/auth/login': typeof AuthLoginRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/api-keys': typeof ApiKeysRoute
-  '/audit': typeof AuditRoute
+  '/analytics': typeof AnalyticsRoute
+  '/app-keys': typeof AppKeysRoute
+  '/audit-logs': typeof AuditLogsRoute
   '/dashboard': typeof DashboardRoute
-  '/docs': typeof DocsRoute
-  '/login': typeof LoginRoute
+  '/models': typeof ModelsRoute
   '/providers': typeof ProvidersRoute
   '/settings': typeof SettingsRoute
-  '/stats': typeof StatsRoute
   '/users': typeof UsersRoute
+  '/auth/login': typeof AuthLoginRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/api-keys': typeof ApiKeysRoute
-  '/audit': typeof AuditRoute
+  '/analytics': typeof AnalyticsRoute
+  '/app-keys': typeof AppKeysRoute
+  '/audit-logs': typeof AuditLogsRoute
   '/dashboard': typeof DashboardRoute
-  '/docs': typeof DocsRoute
-  '/login': typeof LoginRoute
+  '/models': typeof ModelsRoute
   '/providers': typeof ProvidersRoute
   '/settings': typeof SettingsRoute
-  '/stats': typeof StatsRoute
   '/users': typeof UsersRoute
+  '/auth/login': typeof AuthLoginRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/api-keys'
-    | '/audit'
+    | '/analytics'
+    | '/app-keys'
+    | '/audit-logs'
     | '/dashboard'
-    | '/docs'
-    | '/login'
+    | '/models'
     | '/providers'
     | '/settings'
-    | '/stats'
     | '/users'
+    | '/auth/login'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/api-keys'
-    | '/audit'
+    | '/analytics'
+    | '/app-keys'
+    | '/audit-logs'
     | '/dashboard'
-    | '/docs'
-    | '/login'
+    | '/models'
     | '/providers'
     | '/settings'
-    | '/stats'
     | '/users'
+    | '/auth/login'
   id:
     | '__root__'
     | '/'
-    | '/api-keys'
-    | '/audit'
+    | '/analytics'
+    | '/app-keys'
+    | '/audit-logs'
     | '/dashboard'
-    | '/docs'
-    | '/login'
+    | '/models'
     | '/providers'
     | '/settings'
-    | '/stats'
     | '/users'
+    | '/auth/login'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ApiKeysRoute: typeof ApiKeysRoute
-  AuditRoute: typeof AuditRoute
+  AnalyticsRoute: typeof AnalyticsRoute
+  AppKeysRoute: typeof AppKeysRoute
+  AuditLogsRoute: typeof AuditLogsRoute
   DashboardRoute: typeof DashboardRoute
-  DocsRoute: typeof DocsRoute
-  LoginRoute: typeof LoginRoute
+  ModelsRoute: typeof ModelsRoute
   ProvidersRoute: typeof ProvidersRoute
   SettingsRoute: typeof SettingsRoute
-  StatsRoute: typeof StatsRoute
   UsersRoute: typeof UsersRoute
+  AuthLoginRoute: typeof AuthLoginRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -167,13 +167,6 @@ declare module '@tanstack/react-router' {
       path: '/users'
       fullPath: '/users'
       preLoaderRoute: typeof UsersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/stats': {
-      id: '/stats'
-      path: '/stats'
-      fullPath: '/stats'
-      preLoaderRoute: typeof StatsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -190,18 +183,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProvidersRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/docs': {
-      id: '/docs'
-      path: '/docs'
-      fullPath: '/docs'
-      preLoaderRoute: typeof DocsRouteImport
+    '/models': {
+      id: '/models'
+      path: '/models'
+      fullPath: '/models'
+      preLoaderRoute: typeof ModelsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -211,18 +197,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/audit': {
-      id: '/audit'
-      path: '/audit'
-      fullPath: '/audit'
-      preLoaderRoute: typeof AuditRouteImport
+    '/audit-logs': {
+      id: '/audit-logs'
+      path: '/audit-logs'
+      fullPath: '/audit-logs'
+      preLoaderRoute: typeof AuditLogsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api-keys': {
-      id: '/api-keys'
-      path: '/api-keys'
-      fullPath: '/api-keys'
-      preLoaderRoute: typeof ApiKeysRouteImport
+    '/app-keys': {
+      id: '/app-keys'
+      path: '/app-keys'
+      fullPath: '/app-keys'
+      preLoaderRoute: typeof AppKeysRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/analytics': {
+      id: '/analytics'
+      path: '/analytics'
+      fullPath: '/analytics'
+      preLoaderRoute: typeof AnalyticsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -232,20 +225,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth/login': {
+      id: '/auth/login'
+      path: '/auth/login'
+      fullPath: '/auth/login'
+      preLoaderRoute: typeof AuthLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ApiKeysRoute: ApiKeysRoute,
-  AuditRoute: AuditRoute,
+  AnalyticsRoute: AnalyticsRoute,
+  AppKeysRoute: AppKeysRoute,
+  AuditLogsRoute: AuditLogsRoute,
   DashboardRoute: DashboardRoute,
-  DocsRoute: DocsRoute,
-  LoginRoute: LoginRoute,
+  ModelsRoute: ModelsRoute,
   ProvidersRoute: ProvidersRoute,
   SettingsRoute: SettingsRoute,
-  StatsRoute: StatsRoute,
   UsersRoute: UsersRoute,
+  AuthLoginRoute: AuthLoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

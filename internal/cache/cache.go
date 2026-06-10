@@ -14,10 +14,11 @@ import (
 type GatewayCache struct {
 	db *gorm.DB
 
-	mu        sync.RWMutex
-	apiKeys   map[string]*model.APIKey // keyHash -> APIKey
-	users     map[uint]*model.User     // userID -> User
-	providers map[string]*model.Provider // name -> Provider
+	mu         sync.RWMutex
+	apiKeys    map[string]*model.APIKey     // keyHash -> APIKey
+	users      map[uint]*model.User         // userID -> User
+	accessKeys map[string]*model.User       // accessKey -> User (for AKSK auth)
+	providers  map[string]*model.Provider   // name -> Provider
 
 	refreshInterval time.Duration
 	stopCh          chan struct{}
@@ -28,6 +29,7 @@ func New(db *gorm.DB, refreshInterval time.Duration) *GatewayCache {
 		db:              db,
 		apiKeys:         make(map[string]*model.APIKey),
 		users:           make(map[uint]*model.User),
+		accessKeys:      make(map[string]*model.User),
 		providers:       make(map[string]*model.Provider),
 		refreshInterval: refreshInterval,
 		stopCh:          make(chan struct{}),
@@ -74,12 +76,17 @@ func (c *GatewayCache) loadUsers() {
 	}
 
 	m := make(map[uint]*model.User, len(users))
+	ak := make(map[string]*model.User)
 	for i := range users {
 		m[users[i].ID] = &users[i]
+		if users[i].AccessKey != "" {
+			ak[users[i].AccessKey] = &users[i]
+		}
 	}
 
 	c.mu.Lock()
 	c.users = m
+	c.accessKeys = ak
 	c.mu.Unlock()
 }
 
@@ -136,4 +143,11 @@ func (c *GatewayCache) GetProvider(name string) *model.Provider {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.providers[name]
+}
+
+// GetUserByAccessKey 根据 accessKey 从缓存获取用户 (AKSK 鉴权)
+func (c *GatewayCache) GetUserByAccessKey(accessKey string) *model.User {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.accessKeys[accessKey]
 }

@@ -1,105 +1,97 @@
-import { useState } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
-import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
-import { Button } from '@/components/ui/button'
-import toast from 'react-hot-toast'
-import { PageHeader } from '@/components/page-header'
+import { createFileRoute } from '@tanstack/react-router';
+import { useEffect } from 'react';
+import { useForm } from '@tanstack/react-form';
+import { toast } from 'sonner';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { PageHeader } from '@/components/page-header';
+import { FormFieldInput } from '@/components/form';
+import { Button } from '@/components/ui/button';
+import { Loading } from '@/components/loader';
+import { configService, type Config } from '@/services/config';
+import { useBreadcrumb } from '@/hooks/use-breadcrumb';
 
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
-})
+});
+
+const CONFIG_FIELDS = [
+  { key: 'audit_retention_days', title: '审计日志保留天数', type: 'number' as const, placeholder: '90' },
+];
 
 function SettingsPage() {
-  const handleSave = () => {
-    toast('功能开发中，敬请期待', { icon: '🚧' })
+  const { setBreadcrumbs } = useBreadcrumb();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    setBreadcrumbs([{ title: '设置' }]);
+  }, []);
+
+  const { data: configs, isLoading } = useQuery({
+    queryKey: ['configs'],
+    queryFn: () => configService.list(),
+  });
+
+  const configMap = Object.fromEntries((configs ?? []).map((c: Config) => [c.key, c.value]));
+
+  const mutation = useMutation({
+    mutationFn: (params: { key: string; value: string }) => configService.update(params.key, params.value),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['configs'] });
+      toast.success('保存成功');
+    },
+    onError: () => {
+      toast.error('保存失败');
+    },
+  });
+
+  const form = useForm({
+    defaultValues: {
+      audit_retention_days: '',
+    },
+    onSubmit: async ({ value }) => {
+      await Promise.all(
+        CONFIG_FIELDS.map((field) => {
+          const val = String(value[field.key as keyof typeof value] ?? '');
+          return mutation.mutateAsync({ key: field.key, value: val });
+        }),
+      );
+    },
+  });
+
+  useEffect(() => {
+    if (configs) {
+      form.setFieldValue('audit_retention_days', configMap['audit_retention_days'] ?? '90');
+    }
+  }, [configs]);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-8">
+        <Loading size={32} />
+      </div>
+    );
   }
 
-  const [activeTab, setActiveTab] = useState('general')
-
   return (
-    <div className="flex flex-1 flex-col gap-4 py-4 md:py-6">
-      <div className="px-4 lg:px-6">
-        <PageHeader
-          title="系统设置"
-          description="配置系统的基本参数"
-          tabs={[
-            { title: '通用设置', active: activeTab === 'general', onClick: () => setActiveTab('general') },
-            { title: '邮件通知', active: activeTab === 'email', onClick: () => setActiveTab('email') },
-          ]}
-        />
+    <div className="flex flex-1 flex-col gap-4 p-4">
+      <PageHeader title="系统设置" description="管理系统全局配置参数" />
+      <div className="rounded-lg border bg-card p-6">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            form.handleSubmit();
+          }}
+          className="flex flex-col gap-6 max-w-xl"
+        >
+          <FormFieldInput form={form} name="audit_retention_days" title="审计日志保留天数" type="number" placeholder="90" tips="审计日志超过此天数将被自动清理" />
+          <div>
+            <Button type="submit" disabled={mutation.isPending}>
+              {mutation.isPending ? '保存中...' : '保存设置'}
+            </Button>
+          </div>
+        </form>
       </div>
-
-      {activeTab === 'general' && (
-        <Card className="mx-4 lg:mx-6">
-          <CardContent className="space-y-4 pt-6">
-              <div className="space-y-2">
-                <Label htmlFor="site-name">站点名称</Label>
-                <Input id="site-name" defaultValue="LLM Gateway" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="default-model">默认模型</Label>
-                <Input id="default-model" defaultValue="gpt-4o-mini" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="max-tokens">单次请求最大 Token</Label>
-                <Input id="max-tokens" type="number" defaultValue="4096" />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>允许注册</Label>
-                  <p className="text-sm text-muted-foreground">是否允许新用户注册</p>
-                </div>
-                <Switch defaultChecked />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>自动审核</Label>
-                  <p className="text-sm text-muted-foreground">新用户注册后自动审核通过</p>
-                </div>
-                <Switch />
-              </div>
-              <Button onClick={handleSave}>保存设置</Button>
-            </CardContent>
-          </Card>
-      )}
-
-      {activeTab === 'email' && (
-        <Card className="mx-4 lg:mx-6">
-          <CardContent className="space-y-4 pt-6">
-              <div className="space-y-2">
-                <Label htmlFor="smtp-host">SMTP 服务器</Label>
-                <Input id="smtp-host" placeholder="smtp.example.com" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="smtp-port">SMTP 端口</Label>
-                <Input id="smtp-port" type="number" defaultValue="587" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="smtp-user">SMTP 用户名</Label>
-                <Input id="smtp-user" placeholder="noreply@example.com" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="smtp-pass">SMTP 密码</Label>
-                <Input id="smtp-pass" type="password" placeholder="••••••••" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="notify-email">通知邮箱</Label>
-                <Input id="notify-email" type="email" placeholder="admin@example.com" />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>启用邮件通知</Label>
-                  <p className="text-sm text-muted-foreground">是否启用邮件通知功能</p>
-                </div>
-                <Switch />
-              </div>
-              <Button onClick={handleSave}>保存设置</Button>
-            </CardContent>
-          </Card>
-      )}
     </div>
-  )
+  );
 }

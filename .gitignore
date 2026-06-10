@@ -4,8 +4,12 @@ build/
 run-demo/
 llm-gateway.exe
 
+# Toolchain
+gcc/
+
 # Data
 data/*.db
+data/*.db.wal
 data/*.db-wal
 data/*.db-shm
 !data/.gitkeep

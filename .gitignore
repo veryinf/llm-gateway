@@ -1,0 +1,40 @@
+# Binary
+output/
+build/
+run-demo/
+llm-gateway.exe
+
+# Data
+data/*.db
+data/*.db-wal
+data/*.db-shm
+!data/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+coverage.out
+coverage.html
+vendor/
+
+# Node
+web/node_modules/
+web/dist/
+cmd/gateway/dist/
+!cmd/gateway/dist/.gitkeep
+
+# Env
+.env
+.env.local
+
+# QWEN
+.qwen/
+QWEN.md

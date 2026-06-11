@@ -18,8 +18,8 @@ export interface LoginParams {
 
 export async function login(params: LoginParams): Promise<void> {
   const res = await request.post<API.SingleResponse<{ token: string }>>('/admin/login', params);
-  if (res.data.code !== 0) {
-    throw new Error(res.data.msg || '登录失败');
+  if (res.data.errCode !== 0) {
+    throw new Error(res.data.errMsg || '登录失败');
   }
   localStorage.setItem('accessToken', res.data.data!.token);
 }
@@ -30,7 +30,7 @@ export async function fetchProfile(): Promise<SessionUser | null> {
   }
   try {
     const res = await request.get<API.SingleResponse<SessionUser>>('/admin/profile');
-    if (res.data.code !== 0) {
+    if (res.data.errCode !== 0) {
       return null;
     }
     return res.data.data!;

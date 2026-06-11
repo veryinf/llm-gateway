@@ -2,7 +2,7 @@ package service
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 
 	"llm-gateway/internal/model"
 	"llm-gateway/internal/provider"
@@ -38,18 +38,18 @@ func (s *ProviderService) LoadProvidersFromDB() error {
 	for _, p := range providers {
 		adapter, err := s.createAdapter(p)
 		if err != nil {
-			log.Printf("skip provider %s: %v", p.Name, err)
+			slog.Warn("skip provider", "name", p.Name, "error", err)
 			continue
 		}
 
 		if err := s.registry.Register(adapter); err != nil {
-			log.Printf("skip provider %s: %v", p.Name, err)
+			slog.Warn("skip provider", "name", p.Name, "error", err)
 			continue
 		}
 
 		var models []model.Model
 		if err := s.db.Where("provider_id = ? AND is_active = ?", p.ID, true).Find(&models).Error; err != nil {
-			log.Printf("list models for provider %s: %v", p.Name, err)
+			slog.Warn("list models for provider", "name", p.Name, "error", err)
 			continue
 		}
 
@@ -61,7 +61,7 @@ func (s *ProviderService) LoadProvidersFromDB() error {
 	}
 
 	s.modelRouter.LoadModelMap(providerModels)
-	log.Printf("loaded %d providers", len(providers))
+	slog.Info("loaded providers", "count", len(providers))
 	return nil
 }
 

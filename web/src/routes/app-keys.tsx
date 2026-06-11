@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Page, type PageInformation } from '@/components/full-page';
 import { Badge } from '@/components/ui/badge';
@@ -7,40 +7,14 @@ import { Button } from '@/components/ui/button';
 import { useBreadcrumb } from '@/hooks/use-breadcrumb';
 import { useConfirm } from '@/components/confirm';
 import { apiKeyService, type APIKey } from '@/services/api-key';
-import { toast } from 'sonner';
+import { useUsers } from '@/hooks/use-users';
 import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import type { API } from '@/typings';
 
 export const Route = createFileRoute('/app-keys')({
   component: AppKeysPage,
 });
-
-const appKeyService: API.Service<APIKey> = {
-  primaryKey: (entity) => entity.id,
-  title: (entity) => entity.name || entity.key_prefix,
-
-  async search() {
-    const list = await apiKeyService.listAll();
-    return { list, total: list.length };
-  },
-
-  async fetch() {
-    return { data: undefined };
-  },
-
-  async add() {
-    return { errCode: 0, errMsg: 'ok' };
-  },
-
-  async update() {
-    return { errCode: 0, errMsg: 'ok' };
-  },
-
-  async delete(id) {
-    await apiKeyService.deleteGlobal(id);
-    return { errCode: 0, errMsg: 'ok' };
-  },
-};
 
 const pageInformation: PageInformation = {
   name: 'app-keys',
@@ -53,6 +27,50 @@ function AppKeysPage() {
   const { setBreadcrumbs } = useBreadcrumb();
   const { confirmHandler, Confirm } = useConfirm();
   const queryClient = useQueryClient();
+
+  const { users } = useUsers();
+
+  const userOptions = useMemo(
+    () => users.map((u) => ({ label: u.name || u.username, value: String(u.id) })),
+    [users],
+  );
+
+  const appKeyService: API.Service<APIKey> = useMemo(
+    () => ({
+      primaryKey: (entity) => entity.id,
+      title: (entity) => entity.name || entity.key,
+
+      async search(params) {
+        let list = await apiKeyService.listAll();
+        if (params.filters) {
+          for (const f of params.filters) {
+            if (f.id === 'user_id' && Array.isArray(f.value) && f.value.length > 0) {
+              list = list.filter((k) => (f.value as string[]).includes(String(k.user_id)));
+            }
+          }
+        }
+        return { errCode: 0, errMsg: 'ok', dataSet: list, total: list.length };
+      },
+
+      async fetch() {
+        return { errCode: 0, errMsg: 'ok', data: undefined };
+      },
+
+      async add() {
+        return { errCode: 0, errMsg: 'ok' };
+      },
+
+      async update() {
+        return { errCode: 0, errMsg: 'ok' };
+      },
+
+      async delete(id) {
+        await apiKeyService.deleteGlobal(id);
+        return { errCode: 0, errMsg: 'ok' };
+      },
+    }),
+    [],
+  );
 
   useEffect(() => {
     setBreadcrumbs(pageInformation.breadcrumbs ?? []);
@@ -71,26 +89,31 @@ function AppKeysPage() {
   const columns: ColumnDef<APIKey, any>[] = [
     {
       accessorKey: 'user_id',
-      header: '用户 ID',
-      meta: { label: '用户 ID' },
+      header: '用户',
+      enableColumnFilter: true,
+      meta: { label: '用户', className: 'w-[100px]', emuns: userOptions },
+      cell: ({ row }) => {
+        const user = users.find((u) => u.id === row.original.user_id);
+        return user?.name || user?.username || row.original.user_id;
+      },
     },
     {
       accessorKey: 'name',
       header: '名称',
-      meta: { label: '名称' },
+      meta: { label: '名称', className: 'w-[120px]' },
     },
     {
-      accessorKey: 'key_prefix',
-      header: 'Key 前缀',
-      meta: { label: 'Key 前缀' },
+      accessorKey: 'key',
+      header: 'Key',
+      meta: { label: 'Key', className: 'w-[280px]' },
       cell: ({ row }) => (
-        <span className="font-mono text-xs">{row.original.key_prefix}...</span>
+        <span className="font-mono text-xs break-all">{row.original.key}</span>
       ),
     },
     {
       accessorKey: 'quota_limit',
       header: '配额',
-      meta: { label: '配额' },
+      meta: { label: '配额', className: 'w-[80px]' },
       cell: ({ row }) => {
         const v = row.original.quota_limit;
         return v > 0 ? v.toLocaleString() : '不限';
@@ -99,19 +122,19 @@ function AppKeysPage() {
     {
       accessorKey: 'quota_used',
       header: '已使用',
-      meta: { label: '已使用' },
+      meta: { label: '已使用', className: 'w-[80px]' },
       cell: ({ row }) => row.original.quota_used.toLocaleString(),
     },
     {
       accessorKey: 'rate_limit_qpm',
       header: 'QPM',
-      meta: { label: 'QPM' },
+      meta: { label: 'QPM', className: 'w-[70px]' },
       cell: ({ row }) => row.original.rate_limit_qpm || '不限',
     },
     {
       accessorKey: 'is_active',
       header: '状态',
-      meta: { label: '状态' },
+      meta: { label: '状态', className: 'w-[70px]' },
       cell: ({ row }) => (
         <Badge variant={row.original.is_active ? 'default' : 'destructive'}>
           {row.original.is_active ? '启用' : '禁用'}
@@ -121,7 +144,7 @@ function AppKeysPage() {
     {
       accessorKey: 'created_at',
       header: '创建时间',
-      meta: { label: '创建时间' },
+      meta: { label: '创建时间', className: 'w-[100px]' },
       cell: ({ row }) => new Date(row.original.created_at).toLocaleDateString(),
     },
     {

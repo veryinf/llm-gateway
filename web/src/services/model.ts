@@ -17,15 +17,15 @@ export const modelService: API.Service<Model> = {
   title: (entity) => entity.name,
 
   async search() {
-    const res = await request.get<API.SingleResponse<Model[]>>('/admin/models');
-    const list = res.data.data ?? [];
-    return { list, total: list.length };
+    const res = await request.get<API.DataSet<Model>>('/admin/models');
+    return res.data;
   },
 
   async fetch(id) {
-    const res = await request.get<API.SingleResponse<Model[]>>('/admin/models');
-    const model = (res.data.data ?? []).find((m) => m.id === id);
-    return { data: model };
+    const res = await request.get<API.SingleResponse<Model>>('/admin/models');
+    const list = (res.data.data as unknown as Model[]) ?? [];
+    const model = list.find((m) => m.id === id);
+    return { errCode: 0, errMsg: 'ok', data: model };
   },
 
   async add(params) {

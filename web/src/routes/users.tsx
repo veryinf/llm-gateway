@@ -1,9 +1,9 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Page, type PageInformation } from '@/components/full-page';
-import { FormFieldInput, FormFieldSelect } from '@/components/form';
+import { FormFieldInput, FormFieldSelect, FormFieldSwitch } from '@/components/form';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Loading } from '@/components/loader';
 import { useModal } from '@/components/modal';
 import { useConfirm } from '@/components/confirm';
+import { EasyTooltip } from '@/components/easy-tooltip';
 import { userService, type User } from '@/services/user';
 import { apiKeyService, type CreateAPIKeyParams } from '@/services/api-key';
 import { useBreadcrumb } from '@/hooks/use-breadcrumb';
@@ -83,10 +84,28 @@ function UsersPage() {
     setBreadcrumbs(pageInformation.breadcrumbs ?? []);
   }, []);
 
+  const allColumns: ColumnDef<User, any>[] = [
+    ...columns,
+    {
+      id: 'api_keys',
+      header: 'API Keys',
+      meta: { label: 'API Keys', className: 'w-24' },
+      cell: ({ row }) => (
+        <EasyTooltip tooltip="点击查看详情">
+          <Button variant="ghost" size="sm" asChild>
+            <Link to="/app-keys" search={{ user_id: row.original.id }}>
+              {row.original.api_key_count}
+            </Link>
+          </Button>
+        </EasyTooltip>
+      ),
+    },
+  ];
+
   return (
     <Page<User>
       infomation={pageInformation}
-      columns={columns}
+      columns={allColumns}
       service={userService}
       options={{ showSelectColumn: false }}
       renderViewDetail={(entity) => <UserDetail entity={entity} />}
@@ -99,26 +118,30 @@ function UsersPage() {
         department: entity?.department ?? '',
         role: entity?.role ?? 'user',
         is_active: entity?.is_active ?? true,
+        api_key_count: entity?.api_key_count ?? 0,
         created_at: entity?.created_at ?? '',
         updated_at: entity?.updated_at ?? '',
       })}
       renderViewAdd={(form) => (
-        <div className="flex flex-col gap-4">
-          <FormFieldInput form={form} name="username" title="用户名" required placeholder="请输入用户名" />
-          <FormFieldInput form={form} name="password" title="密码" required placeholder="请输入密码" type="password" />
-          <FormFieldInput form={form} name="name" title="姓名" placeholder="请输入姓名" />
-          <FormFieldInput form={form} name="phone" title="手机号" placeholder="请输入手机号" />
-          <FormFieldInput form={form} name="department" title="部门" placeholder="请输入部门" />
-          <FormFieldSelect form={form} name="role" title="角色" options={roleOptions} />
+        <div className="grid grid-cols-12 gap-4">
+          <FormFieldInput className="col-span-4" form={form} name="username" title="用户名" required placeholder="请输入用户名" />
+          <FormFieldInput className="col-span-4" form={form} name="password" title="密码" required placeholder="请输入密码" type="password" />
+          <FormFieldSwitch className="col-span-4" form={form} name="is_active" title="状态" switchLabel="启用" />
+          <FormFieldSelect className="col-span-4" form={form} name="role" title="角色" options={roleOptions} />
+          <FormFieldInput className="col-span-4" form={form} name="name" title="姓名" placeholder="请输入姓名" />
+          <FormFieldInput className="col-span-4" form={form} name="department" title="部门" placeholder="请输入部门" />
+          <FormFieldInput className="col-span-4" form={form} name="phone" title="手机号" placeholder="请输入手机号" />
         </div>
       )}
       renderViewUpdate={(form, _entity) => (
-        <div className="flex flex-col gap-4">
-          <FormFieldInput form={form} name="username" title="用户名" required />
-          <FormFieldInput form={form} name="name" title="姓名" placeholder="请输入姓名" />
-          <FormFieldInput form={form} name="phone" title="手机号" placeholder="请输入手机号" />
-          <FormFieldInput form={form} name="department" title="部门" placeholder="请输入部门" />
-          <FormFieldSelect form={form} name="role" title="角色" options={roleOptions} />
+        <div className="grid grid-cols-12 gap-4">
+          <FormFieldInput className="col-span-4" form={form} name="username" title="用户名" required />
+          <FormFieldInput className="col-span-4" form={form} name="password" title="密码" placeholder="留空不修改" type="password" />
+          <FormFieldSwitch className="col-span-4" form={form} name="is_active" title="状态" switchLabel="启用" />
+          <FormFieldSelect className="col-span-4" form={form} name="role" title="角色" options={roleOptions} />
+          <FormFieldInput className="col-span-4" form={form} name="name" title="姓名" placeholder="请输入姓名" />
+          <FormFieldInput className="col-span-4" form={form} name="department" title="部门" placeholder="请输入部门" />
+          <FormFieldInput className="col-span-4" form={form} name="phone" title="手机号" placeholder="请输入手机号" />
         </div>
       )}
     />
@@ -219,7 +242,7 @@ function UserDetail({ entity }: { entity: User }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>名称</TableHead>
-                  <TableHead>Key 前缀</TableHead>
+                  <TableHead>Key</TableHead>
                   <TableHead>配额</TableHead>
                   <TableHead>已使用</TableHead>
                   <TableHead>QPM</TableHead>
@@ -239,7 +262,7 @@ function UserDetail({ entity }: { entity: User }) {
                   apiKeys.map((key) => (
                     <TableRow key={key.id}>
                       <TableCell>{key.name}</TableCell>
-                      <TableCell className="font-mono text-xs">{key.key_prefix}...</TableCell>
+                      <TableCell className="font-mono text-xs break-all">{key.key}</TableCell>
                       <TableCell>{key.quota_limit > 0 ? key.quota_limit.toLocaleString() : '不限'}</TableCell>
                       <TableCell>{key.quota_used.toLocaleString()}</TableCell>
                       <TableCell>{key.rate_limit_qpm || '不限'}</TableCell>

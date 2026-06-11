@@ -1,22 +1,18 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useEffect } from 'react';
-import { useForm } from '@tanstack/react-form';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { PageHeader } from '@/components/page-header';
-import { FormFieldInput } from '@/components/form';
-import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { Loading } from '@/components/loader';
-import { configService, type Config } from '@/services/config';
+import { request } from '@/lib';
 import { useBreadcrumb } from '@/hooks/use-breadcrumb';
+import { configService, type Config } from '@/services/config';
 
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
 });
-
-const CONFIG_FIELDS = [
-  { key: 'audit_retention_days', title: '审计日志保留天数', type: 'number' as const, placeholder: '90' },
-];
 
 function SettingsPage() {
   const { setBreadcrumbs } = useBreadcrumb();
@@ -31,9 +27,9 @@ function SettingsPage() {
     queryFn: () => configService.list(),
   });
 
-  const configMap = Object.fromEntries((configs ?? []).map((c: Config) => [c.key, c.value]));
+  const configMap = Object.fromEntries((configs?.dataSet ?? []).map((c: Config) => [c.key, c.value]));
 
-  const mutation = useMutation({
+  const retentionMutation = useMutation({
     mutationFn: (params: { key: string; value: string }) => configService.update(params.key, params.value),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['configs'] });
@@ -44,25 +40,19 @@ function SettingsPage() {
     },
   });
 
-  const form = useForm({
-    defaultValues: {
-      audit_retention_days: '',
+  const detailMutation = useMutation({
+    mutationFn: (value: string) =>
+      request.put('/admin/config/request-detail', { value }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['configs'] });
+      toast.success('开关已更新');
     },
-    onSubmit: async ({ value }) => {
-      await Promise.all(
-        CONFIG_FIELDS.map((field) => {
-          const val = String(value[field.key as keyof typeof value] ?? '');
-          return mutation.mutateAsync({ key: field.key, value: val });
-        }),
-      );
+    onError: () => {
+      toast.error('更新失败');
     },
   });
 
-  useEffect(() => {
-    if (configs) {
-      form.setFieldValue('audit_retention_days', configMap['audit_retention_days'] ?? '90');
-    }
-  }, [configs]);
+  const logDetailEnabled = configMap['log_request_detail'] === 'true';
 
   if (isLoading) {
     return (
@@ -75,22 +65,48 @@ function SettingsPage() {
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
       <PageHeader title="系统设置" description="管理系统全局配置参数" />
+
+      {/* Request Detail Toggle */}
       <div className="rounded-lg border bg-card p-6">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            form.handleSubmit();
-          }}
-          className="flex flex-col gap-6 max-w-xl"
-        >
-          <FormFieldInput form={form} name="audit_retention_days" title="审计日志保留天数" type="number" placeholder="90" tips="审计日志超过此天数将被自动清理" />
-          <div>
-            <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? '保存中...' : '保存设置'}
-            </Button>
+        <h3 className="mb-4 text-lg font-medium">请求详情记录</h3>
+        <div className="flex items-center gap-3">
+          <Switch
+            id="log-detail"
+            checked={logDetailEnabled}
+            onCheckedChange={(checked) => {
+              detailMutation.mutate(checked ? 'true' : 'false');
+            }}
+            disabled={detailMutation.isPending}
+          />
+          <Label htmlFor="log-detail" className="cursor-pointer">
+            {logDetailEnabled ? '已开启' : '已关闭'}
+          </Label>
+        </div>
+        <p className="text-muted-foreground mt-2 text-sm">
+          开启后将记录完整的请求/响应 body 数据。非流式请求记录在 response_body 字段，流式请求记录在 request_chunks 表中。
+        </p>
+      </div>
+
+      {/* Retention Config */}
+      <div className="rounded-lg border bg-card p-6">
+        <h3 className="mb-4 text-lg font-medium">数据保留</h3>
+        <div className="flex flex-col gap-4 max-w-xl">
+          <div className="flex items-center gap-4">
+            <Label htmlFor="retention-days" className="w-40 shrink-0">请求日志保留天数</Label>
+            <input
+              id="retention-days"
+              type="number"
+              defaultValue={configMap['request_log_retention_days'] ?? '90'}
+              onBlur={(e) => {
+                retentionMutation.mutate({ key: 'request_log_retention_days', value: e.target.value });
+              }}
+              className="border-input bg-background ring-ring h-9 w-32 rounded-md border px-3 text-sm"
+            />
           </div>
-        </form>
+          <p className="text-muted-foreground text-sm">
+            超过此天数的请求日志和流式 chunks 将被自动清理。
+          </p>
+        </div>
       </div>
     </div>
   );

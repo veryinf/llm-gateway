@@ -74,8 +74,8 @@ request.interceptors.request.use(
 request.interceptors.response.use(
   (response) => {
     const { data } = response;
-    if (data && typeof data.code === 'number' && data.code !== 0) {
-      toast.error('接口错误', { description: data.msg || '请求失败', position: 'bottom-right' });
+    if (data && typeof data.errCode === 'number' && data.errCode !== 0) {
+      toast.error('接口错误', { description: data.errMsg || '请求失败', position: 'bottom-right' });
     }
     return response;
   },

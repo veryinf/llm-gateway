@@ -4,7 +4,7 @@ import type { API } from '@/typings';
 export interface APIKey {
   id: number;
   user_id: number;
-  key_prefix: string;
+  key: string;
   name: string;
   quota_limit: number;
   quota_used: number;
@@ -28,8 +28,8 @@ export interface CreateAPIKeyResponse {
 
 export const apiKeyService = {
   async listByUser(userId: number): Promise<APIKey[]> {
-    const res = await request.get<API.SingleResponse<APIKey[]>>(`/admin/users/${userId}/api-keys`);
-    return res.data.data ?? [];
+    const res = await request.get<API.DataSet<APIKey>>(`/admin/users/${userId}/api-keys`);
+    return res.data.dataSet ?? [];
   },
 
   async create(userId: number, params: CreateAPIKeyParams): Promise<CreateAPIKeyResponse> {
@@ -45,8 +45,8 @@ export const apiKeyService = {
   },
 
   async listAll(): Promise<APIKey[]> {
-    const res = await request.get<API.SingleResponse<APIKey[]>>('/admin/api-keys');
-    return res.data.data ?? [];
+    const res = await request.get<API.DataSet<APIKey>>('/admin/api-keys');
+    return res.data.dataSet ?? [];
   },
 
   async deleteGlobal(keyId: number): Promise<void> {

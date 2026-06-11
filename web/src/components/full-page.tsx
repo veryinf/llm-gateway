@@ -91,7 +91,7 @@ export function Page<TEntity>(props: PageProps<TEntity>) {
       return props.service.search(tableState.current ?? {});
     },
     select: (x) => {
-      const list = props.entityTransfer ? (x.list ?? []).map((e: TEntity) => props.entityTransfer!(e)) : (x.list ?? []);
+      const list = props.entityTransfer ? (x.dataSet ?? []).map((e: TEntity) => props.entityTransfer!(e)) : (x.dataSet ?? []);
       return { list, total: x.total };
     },
     enabled: !!props.service && !!tableState.current,

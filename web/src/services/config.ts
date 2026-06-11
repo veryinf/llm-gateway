@@ -11,8 +11,8 @@ export interface Config {
 
 export const configService = {
   async list() {
-    const res = await request.get<API.SingleResponse<Config[]>>('/admin/configs');
-    return res.data.data ?? [];
+    const res = await request.get<API.DataSet<Config>>('/admin/configs');
+    return res.data;
   },
 
   async update(key: string, value: string) {

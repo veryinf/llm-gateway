@@ -12,9 +12,11 @@ import (
 
 const insertRequestLogSQL = `INSERT INTO request_logs
 	(trace_id, user_id, api_key_id, provider_id, model_name, is_stream,
-	 prompt_tokens, completion_tokens, total_tokens, status_code,
-	 error_message, latency_ms, cost, created_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	 prompt_tokens, completion_tokens, total_tokens,
+	 request_body, response_body, is_detail,
+	 status_code, error_message, latency_ms, cost,
+	 ip_address, user_agent, created_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 type StatsService struct {
 	db         *sql.DB
@@ -128,8 +130,9 @@ func (s *StatsService) flush(batch []*model.RequestLog) {
 		if _, err := stmt.ExecContext(ctx,
 			l.TraceID, l.UserID, l.APIKeyID, l.ProviderID,
 			l.ModelName, l.IsStream, l.PromptTokens, l.CompletionTokens,
-			l.TotalTokens, l.StatusCode, l.ErrorMessage, l.LatencyMs,
-			l.Cost, l.CreatedAt,
+			l.TotalTokens, l.RequestBody, l.ResponseBody, l.IsDetail,
+			l.StatusCode, l.ErrorMessage, l.LatencyMs, l.Cost,
+			l.IPAddress, l.UserAgent, l.CreatedAt,
 		); err != nil {
 			tx.Rollback()
 			log.Printf("stats flush exec error: %v", err)

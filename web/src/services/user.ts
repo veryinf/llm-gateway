@@ -9,6 +9,7 @@ export interface User {
   department: string;
   role: 'admin' | 'user' | 'viewer';
   is_active: boolean;
+  api_key_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -26,16 +27,16 @@ export const userService: API.Service<User> = {
   primaryKey: (entity) => entity.id,
   title: (entity) => entity.username,
 
-  async search() {
-    const res = await request.get<API.SingleResponse<User[]>>('/admin/users');
-    const list = res.data.data ?? [];
-    return { list, total: list.length };
+  async search(_params) {
+    const res = await request.get<API.DataSet<User>>('/admin/users');
+    return res.data;
   },
 
   async fetch(id) {
-    const res = await request.get<API.SingleResponse<User[]>>('/admin/users');
-    const user = (res.data.data ?? []).find((u) => u.id === id);
-    return { data: user };
+    const res = await request.get<API.SingleResponse<User>>('/admin/users');
+    const list = (res.data.data as unknown as User[]) ?? [];
+    const user = list.find((u) => u.id === id);
+    return { errCode: 0, errMsg: 'ok', data: user };
   },
 
   async add(params) {

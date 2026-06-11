@@ -103,6 +103,8 @@ function ProvidersPage() {
           <FormFieldInput form={form} name="base_url" title="Base URL" required />
           <FormFieldInput form={form} name="api_key" title="API Key (留空不修改)" placeholder="留空不修改" type="password" />
           <FormFieldInput form={form} name="priority" title="优先级" type="number" />
+          <FormFieldInput form={form} name="rate_limit_qpm" title="QPM 限流 (0=不限)" type="number" />
+          <FormFieldInput form={form} name="rate_limit_burst" title="并发上限 (0=默认)" type="number" />
           <FormFieldSwitch form={form} name="is_active" title="启用" switchLabel="启用此 Provider" />
         </div>
       )}

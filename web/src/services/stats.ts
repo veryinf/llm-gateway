@@ -53,26 +53,26 @@ function buildDateParams(start?: string, end?: string) {
 export const statsService = {
   async fetchTokens(start?: string, end?: string): Promise<TokenStat[]> {
     const qs = buildDateParams(start, end);
-    const res = await request.get<API.SingleResponse<TokenStat[]>>(`/stats/tokens?${qs}`);
-    return res.data.data ?? [];
+    const res = await request.get<API.DataSet<TokenStat>>(`/stats/tokens?${qs}`);
+    return res.data.dataSet ?? [];
   },
 
   async fetchRequests(start?: string, end?: string): Promise<RequestStat[]> {
     const qs = buildDateParams(start, end);
-    const res = await request.get<API.SingleResponse<RequestStat[]>>(`/stats/requests?${qs}`);
-    return res.data.data ?? [];
+    const res = await request.get<API.DataSet<RequestStat>>(`/stats/requests?${qs}`);
+    return res.data.dataSet ?? [];
   },
 
   async fetchCosts(start?: string, end?: string): Promise<CostStat[]> {
     const qs = buildDateParams(start, end);
-    const res = await request.get<API.SingleResponse<CostStat[]>>(`/stats/costs?${qs}`);
-    return res.data.data ?? [];
+    const res = await request.get<API.DataSet<CostStat>>(`/stats/costs?${qs}`);
+    return res.data.dataSet ?? [];
   },
 
   async fetchBehavior(start?: string, end?: string): Promise<BehaviorStat[]> {
     const qs = buildDateParams(start, end);
-    const res = await request.get<API.SingleResponse<BehaviorStat[]>>(`/stats/behavior?${qs}`);
-    return res.data.data ?? [];
+    const res = await request.get<API.DataSet<BehaviorStat>>(`/stats/behavior?${qs}`);
+    return res.data.dataSet ?? [];
   },
 
   async fetchOverview(start?: string, end?: string): Promise<DashboardOverview> {

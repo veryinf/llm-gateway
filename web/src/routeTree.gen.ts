@@ -11,12 +11,11 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UsersRouteImport } from './routes/users'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as RequestLogsRouteImport } from './routes/request-logs'
 import { Route as ProvidersRouteImport } from './routes/providers'
 import { Route as ModelsRouteImport } from './routes/models'
 import { Route as DashboardRouteImport } from './routes/dashboard'
-import { Route as AuditLogsRouteImport } from './routes/audit-logs'
 import { Route as AppKeysRouteImport } from './routes/app-keys'
-import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthLoginRouteImport } from './routes/auth/login'
 
@@ -28,6 +27,11 @@ const UsersRoute = UsersRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RequestLogsRoute = RequestLogsRouteImport.update({
+  id: '/request-logs',
+  path: '/request-logs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProvidersRoute = ProvidersRouteImport.update({
@@ -45,19 +49,9 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuditLogsRoute = AuditLogsRouteImport.update({
-  id: '/audit-logs',
-  path: '/audit-logs',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AppKeysRoute = AppKeysRouteImport.update({
   id: '/app-keys',
   path: '/app-keys',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AnalyticsRoute = AnalyticsRouteImport.update({
-  id: '/analytics',
-  path: '/analytics',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -73,24 +67,22 @@ const AuthLoginRoute = AuthLoginRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/analytics': typeof AnalyticsRoute
   '/app-keys': typeof AppKeysRoute
-  '/audit-logs': typeof AuditLogsRoute
   '/dashboard': typeof DashboardRoute
   '/models': typeof ModelsRoute
   '/providers': typeof ProvidersRoute
+  '/request-logs': typeof RequestLogsRoute
   '/settings': typeof SettingsRoute
   '/users': typeof UsersRoute
   '/auth/login': typeof AuthLoginRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/analytics': typeof AnalyticsRoute
   '/app-keys': typeof AppKeysRoute
-  '/audit-logs': typeof AuditLogsRoute
   '/dashboard': typeof DashboardRoute
   '/models': typeof ModelsRoute
   '/providers': typeof ProvidersRoute
+  '/request-logs': typeof RequestLogsRoute
   '/settings': typeof SettingsRoute
   '/users': typeof UsersRoute
   '/auth/login': typeof AuthLoginRoute
@@ -98,12 +90,11 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/analytics': typeof AnalyticsRoute
   '/app-keys': typeof AppKeysRoute
-  '/audit-logs': typeof AuditLogsRoute
   '/dashboard': typeof DashboardRoute
   '/models': typeof ModelsRoute
   '/providers': typeof ProvidersRoute
+  '/request-logs': typeof RequestLogsRoute
   '/settings': typeof SettingsRoute
   '/users': typeof UsersRoute
   '/auth/login': typeof AuthLoginRoute
@@ -112,36 +103,33 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/analytics'
     | '/app-keys'
-    | '/audit-logs'
     | '/dashboard'
     | '/models'
     | '/providers'
+    | '/request-logs'
     | '/settings'
     | '/users'
     | '/auth/login'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/analytics'
     | '/app-keys'
-    | '/audit-logs'
     | '/dashboard'
     | '/models'
     | '/providers'
+    | '/request-logs'
     | '/settings'
     | '/users'
     | '/auth/login'
   id:
     | '__root__'
     | '/'
-    | '/analytics'
     | '/app-keys'
-    | '/audit-logs'
     | '/dashboard'
     | '/models'
     | '/providers'
+    | '/request-logs'
     | '/settings'
     | '/users'
     | '/auth/login'
@@ -149,12 +137,11 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AnalyticsRoute: typeof AnalyticsRoute
   AppKeysRoute: typeof AppKeysRoute
-  AuditLogsRoute: typeof AuditLogsRoute
   DashboardRoute: typeof DashboardRoute
   ModelsRoute: typeof ModelsRoute
   ProvidersRoute: typeof ProvidersRoute
+  RequestLogsRoute: typeof RequestLogsRoute
   SettingsRoute: typeof SettingsRoute
   UsersRoute: typeof UsersRoute
   AuthLoginRoute: typeof AuthLoginRoute
@@ -174,6 +161,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/request-logs': {
+      id: '/request-logs'
+      path: '/request-logs'
+      fullPath: '/request-logs'
+      preLoaderRoute: typeof RequestLogsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/providers': {
@@ -197,25 +191,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/audit-logs': {
-      id: '/audit-logs'
-      path: '/audit-logs'
-      fullPath: '/audit-logs'
-      preLoaderRoute: typeof AuditLogsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/app-keys': {
       id: '/app-keys'
       path: '/app-keys'
       fullPath: '/app-keys'
       preLoaderRoute: typeof AppKeysRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/analytics': {
-      id: '/analytics'
-      path: '/analytics'
-      fullPath: '/analytics'
-      preLoaderRoute: typeof AnalyticsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -237,12 +217,11 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AnalyticsRoute: AnalyticsRoute,
   AppKeysRoute: AppKeysRoute,
-  AuditLogsRoute: AuditLogsRoute,
   DashboardRoute: DashboardRoute,
   ModelsRoute: ModelsRoute,
   ProvidersRoute: ProvidersRoute,
+  RequestLogsRoute: RequestLogsRoute,
   SettingsRoute: SettingsRoute,
   UsersRoute: UsersRoute,
   AuthLoginRoute: AuthLoginRoute,

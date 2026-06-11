@@ -32,7 +32,7 @@ function ModelsPage() {
     queryFn: () => providerService.search({}),
   });
 
-  const providerOptions = (providers?.list ?? []).map((p) => ({
+  const providerOptions = (providers?.dataSet ?? []).map((p: any) => ({
     label: `${p.name} (${p.type})`,
     value: String(p.id),
   }));

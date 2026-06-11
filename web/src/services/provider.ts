@@ -20,15 +20,15 @@ export const providerService: API.Service<Provider> = {
   title: (entity) => entity.name,
 
   async search() {
-    const res = await request.get<API.SingleResponse<Provider[]>>('/admin/providers');
-    const list = res.data.data ?? [];
-    return { list, total: list.length };
+    const res = await request.get<API.DataSet<Provider>>('/admin/providers');
+    return res.data;
   },
 
   async fetch(id) {
-    const res = await request.get<API.SingleResponse<Provider[]>>('/admin/providers');
-    const provider = (res.data.data ?? []).find((p) => p.id === id);
-    return { data: provider };
+    const res = await request.get<API.SingleResponse<Provider>>('/admin/providers');
+    const list = (res.data.data as unknown as Provider[]) ?? [];
+    const provider = list.find((p) => p.id === id);
+    return { errCode: 0, errMsg: 'ok', data: provider };
   },
 
   async add(params) {

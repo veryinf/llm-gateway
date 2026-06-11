@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { LayoutDashboard, Users, Server, Cpu, BarChart3, ScrollText, Shield, Settings, Key } from 'lucide-react';
+import { LayoutDashboard, Users, Server, Cpu, ScrollText, Shield, Settings, Key, BarChart3 } from 'lucide-react';
 import { Link, useLocation } from '@tanstack/react-router';
 import { NavUser } from '@/components/nav-user';
 import {
@@ -28,11 +28,11 @@ const menuSet = {
     { title: 'API Key 管理', url: '/app-keys', icon: Key },
     { title: 'LLM服务商', url: '/providers', icon: Server },
     { title: '模型路由', url: '/models', icon: Cpu },
-    { title: '设置', url: '/settings', icon: Settings },
+    { title: '系统设置', url: '/settings', icon: Settings },
   ],
-  stats: [
-    { title: '统计分析', url: '/analytics', icon: BarChart3 },
-    { title: '审计日志', url: '/audit-logs', icon: ScrollText },
+  analytics: [
+    { title: '请求记录', url: '/request-logs', icon: ScrollText },
+    { title: '用量统计', url: '/usage-stats', icon: BarChart3 },
   ],
 };
 
@@ -63,7 +63,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarGroup>
 
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-          <SidebarGroupLabel>管理</SidebarGroupLabel>
+          <SidebarGroupLabel>基础数据</SidebarGroupLabel>
           <SidebarGroupContent className="flex flex-col gap-2">
             <SidebarMenu>
               {menuSet.management.map((item) => (
@@ -74,10 +74,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarGroup>
 
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-          <SidebarGroupLabel>统计</SidebarGroupLabel>
+          <SidebarGroupLabel>分析报告</SidebarGroupLabel>
           <SidebarGroupContent className="flex flex-col gap-2">
             <SidebarMenu>
-              {menuSet.stats.map((item) => (
+              {menuSet.analytics.map((item) => (
                 <MenuItemRender key={item.url} item={item} />
               ))}
             </SidebarMenu>

@@ -29,17 +29,21 @@ declare namespace API {
   }
 
   export interface DataSet<T> {
-    list: T[];
-    total?: number;
+    errCode: number;
+    errMsg: string;
+    dataSet: T[];
+    total: number;
   }
 
   export interface Data<T> {
+    errCode: number;
+    errMsg: string;
     data?: T;
   }
 
   export interface SingleResponse<T> {
-    code: number;
-    msg: string;
+    errCode: number;
+    errMsg: string;
     data?: T;
   }
 }

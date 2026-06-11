@@ -2,24 +2,21 @@ package service
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
-	"time"
+	"fmt"
 
 	"llm-gateway/internal/model"
 
-	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
 type UserService struct {
-	db        *gorm.DB
-	jwtSecret string
+	db *gorm.DB
 }
 
-func NewUserService(db *gorm.DB, jwtSecret string) *UserService {
-	return &UserService{db: db, jwtSecret: jwtSecret}
+func NewUserService(db *gorm.DB) *UserService {
+	return &UserService{db: db}
 }
 
 // CreateDefaultAdmin checks if any user exists; if not, creates a default admin account.
@@ -35,26 +32,18 @@ func (s *UserService) CreateDefaultAdmin(username, password string) (*model.User
 	return s.CreateUser(username, password, "", "", "", model.RoleAdmin)
 }
 
-// Login validates username and password, returns a JWT token on success.
-func (s *UserService) Login(username, password string) (string, error) {
+// Login validates username and password.
+func (s *UserService) Login(username, password string) (*model.User, error) {
 	var user model.User
 	if err := s.db.Where("username = ?", username).First(&user).Error; err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		return "", err
+		return nil, err
 	}
 
-	claims := jwt.MapClaims{
-		"user_id": user.ID,
-		"role":    user.Role,
-		"exp":     time.Now().Add(24 * time.Hour).Unix(),
-		"iat":     time.Now().Unix(),
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(s.jwtSecret))
+	return &user, nil
 }
 
 // CreateUser creates a new user with a bcrypt-hashed password.
@@ -89,26 +78,33 @@ func (s *UserService) GetUser(id uint) (*model.User, error) {
 	return &user, nil
 }
 
-// GenerateAPIKey generates a random API key with sk- prefix, SHA256 hash, and prefix for display.
-// Returns rawKey (full key to give to user), prefix (for display), hash (for storage).
-func GenerateAPIKey() (rawKey, prefix, hash string, err error) {
-	b := make([]byte, 32)
-	if _, err = rand.Read(b); err != nil {
-		return "", "", "", err
+// GenerateAPIKeyRecord creates and stores a new API key record with plaintext key.
+func GenerateAPIKeyRecord(db *gorm.DB, userID uint, name string, quotaLimit int64, rateLimitQPM int) (*model.APIKey, string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return nil, "", fmt.Errorf("generate random key: %w", err)
 	}
 
-	rawKey = "sk-" + hex.EncodeToString(b)
-	prefix = rawKey[:16] + "..."
+	rawKey := "sk-" + hex.EncodeToString(raw)
 
-	h := sha256.Sum256([]byte(rawKey))
-	hash = hex.EncodeToString(h[:])
+	key := &model.APIKey{
+		UserID:       userID,
+		Key:          rawKey,
+		Name:         name,
+		QuotaLimit:   quotaLimit,
+		QuotaUsed:    0,
+		RateLimitQPM: rateLimitQPM,
+		IsActive:     true,
+	}
 
-	return rawKey, prefix, hash, nil
+	if err := db.Create(key).Error; err != nil {
+		return nil, "", err
+	}
+	return key, rawKey, nil
 }
 
-// GenerateAKSK 为用户生成 AKSK 密钥对
-// 返回 accessKey (用于 X-Api-Key) 和 secretKey (用于签名)
-func (s *UserService) GenerateAKSK(userID uint) (accessKey, secretKey string, err error) {
+// GenerateAKSK generates AKSK key pair for a user.
+func GenerateAKSK(db *gorm.DB, userID uint) (accessKey, secretKey string, err error) {
 	ak := make([]byte, 24)
 	if _, err = rand.Read(ak); err != nil {
 		return "", "", err
@@ -121,7 +117,7 @@ func (s *UserService) GenerateAKSK(userID uint) (accessKey, secretKey string, er
 	}
 	secretKey = hex.EncodeToString(sk)
 
-	if err = s.db.Model(&model.User{}).Where("id = ?", userID).
+	if err = db.Model(&model.User{}).Where("id = ?", userID).
 		Updates(map[string]interface{}{
 			"access_key": accessKey,
 			"secret_key": secretKey,

@@ -1,8 +1,8 @@
 # LLM Gateway Build Script
 # Usage: .\build.ps1 <command> [--logfile [path]]
-# Commands: build, build-all, dev, dev-frontend, help
+# Commands: setup, build, build-all, dev, dev-frontend, fmt, vet, help
 
-$BinaryName = "llm-gateway.exe"
+$BinaryName = "lgw.exe"
 $BuildDir = "output"
 $DataDir = "data"
 $WebDir = "web"
@@ -60,11 +60,37 @@ function Write-Step { param([string]$msg) Write-Tee "==> $msg" "Cyan" }
 function Write-OK { param([string]$msg) Write-Tee "√ $msg" "Green" }
 function Write-Err { param([string]$msg) Write-Tee "× $msg" "Red" }
 
+$BuildVersion = if (Test-Path env:CI_COMMIT_TAG) { $env:CI_COMMIT_TAG } else { "dev" }
+$BuildTime = Get-Date -Format "2006-01-02 15:04:05"
+$BuildEnv = if ($Command -eq "build" -or $Command -eq "build-all") { "production" } else { "development" }
+$LdFlags = "-s -w -X 'llm-gateway/internal/core.BuildEnv=$BuildEnv' -X 'llm-gateway/internal/core.BuildTime=$BuildTime' -X 'llm-gateway/internal/core.BuildVersion=$BuildVersion'"
+
 switch ($Command) {
+    "setup" {
+        Write-Step "Installing Go dependencies..."
+        Run "go mod tidy"
+        Write-Step "Installing frontend dependencies..."
+        Push-Location $WebDir
+        try { Run "pnpm install --frozen-lockfile" } finally { Pop-Location }
+        Write-OK "Setup complete"
+    }
+
+    "fmt" {
+        Write-Step "Formatting Go code..."
+        Run "gofmt -w ."
+        Write-OK "Format complete"
+    }
+
+    "vet" {
+        Write-Step "Running go vet..."
+        Run "go vet ./..."
+        if ($LASTEXITCODE -eq 0) { Write-OK "Vet passed" } else { Write-Err "Vet failed"; exit $LASTEXITCODE }
+    }
+
     "build" {
         Write-Step "Building $BinaryName..."
         New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
-        Run "go build -ldflags=""-s -w"" -o ""$BuildDir/$BinaryName"" ./cmd/gateway/"
+        Run "go build -ldflags=""$LdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/gateway/"
         if ($LASTEXITCODE -eq 0) {
             Write-OK "Build success: $BuildDir/$BinaryName"
         } else {
@@ -74,9 +100,10 @@ switch ($Command) {
     }
 
     "dev" {
+        $BinaryName = "lgw-dev.exe"
         Write-Step "Building and starting server in dev mode..."
         New-Item -ItemType Directory -Force -Path $DataDir, $BuildDir | Out-Null
-        Run "go build -o ""$BuildDir/$BinaryName"" ./cmd/gateway/"
+        Run "go build -ldflags=""$LdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/gateway/"
         if ($LASTEXITCODE -ne 0) { Write-Err "Build failed"; exit $LASTEXITCODE }
         Write-OK "Build done, starting..."
         & "$BuildDir/$BinaryName"
@@ -89,13 +116,13 @@ switch ($Command) {
             if (!(Test-Path "node_modules")) { Run "pnpm install --frozen-lockfile" }
             Run "pnpm build"
         } finally { Pop-Location }
-        Write-Step "Copying frontend dist to cmd/gateway/dist..."
-        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "cmd/gateway/dist"
-        New-Item -ItemType Directory -Force -Path "cmd/gateway/dist" | Out-Null
-        Copy-Item -Recurse "$WebDir/dist/*" "cmd/gateway/dist/"
+        Write-Step "Copying frontend dist to static/..."
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "static"
+        New-Item -ItemType Directory -Force -Path "static" | Out-Null
+        Copy-Item -Recurse "$WebDir/dist/*" "static/"
         Write-Step "Building $BinaryName (with embedded frontend)..."
         New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
-        Run "go build -ldflags=""-s -w"" -o ""$BuildDir/$BinaryName"" ./cmd/gateway/"
+        Run "go build -ldflags=""$LdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/gateway/"
         if ($LASTEXITCODE -eq 0) { Write-OK "Build all → $BuildDir/$BinaryName (standalone, frontend embedded)" }
     }
 
@@ -113,6 +140,9 @@ switch ($Command) {
         Write-Host "Usage: .\build.ps1 <command> [--logfile [path]]"
         Write-Host ""
         Write-Host "Commands:" -ForegroundColor Yellow
+        Write-Host "  setup          Install Go + frontend dependencies"
+        Write-Host "  fmt            Format Go code"
+        Write-Host "  vet            Run go vet"
         Write-Host "  build          Build Go binary -> output/"
         Write-Host "  build-all      Build frontend + Go binary"
         Write-Host "  dev            Build and run server"

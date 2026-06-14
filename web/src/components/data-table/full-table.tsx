@@ -41,7 +41,7 @@ export function FullTable<T>(props: FullTableProps<T>) {
   });
   const requestState: FullTableState = {
     kw: globalFilter,
-    filters: columnFilters,
+    filters: columnFilters.map(f => ({ field: f.id, value: f.value })),
     pagination,
   };
 

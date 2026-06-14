@@ -70,7 +70,7 @@ func (h *GatewayHandler) HandleChatCompletion(c echo.Context) error {
 	}
 	var uid, kid uint
 	if cc.AuthUser != nil {
-		uid = cc.AuthUser.ID
+		uid = cc.AuthUser.UID
 	}
 	kid = cc.APIKeyID
 
@@ -269,7 +269,7 @@ func (h *GatewayHandler) HandleMessages(c echo.Context) error {
 	}
 	var uid, kid uint
 	if cc.AuthUser != nil {
-		uid = cc.AuthUser.ID
+		uid = cc.AuthUser.UID
 	}
 	kid = cc.APIKeyID
 

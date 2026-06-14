@@ -33,7 +33,7 @@ export const apiKeyService = {
   },
 
   async create(userId: number, params: CreateAPIKeyParams): Promise<CreateAPIKeyResponse> {
-    const res = await request.post<API.SingleResponse<CreateAPIKeyResponse>>(
+    const res = await request.post<API.Data<CreateAPIKeyResponse>>(
       `/admin/users/${userId}/api-keys`,
       params,
     );
@@ -54,7 +54,7 @@ export const apiKeyService = {
   },
 
   async toggleActive(keyId: number): Promise<{ is_active: boolean }> {
-    const res = await request.put<API.SingleResponse<{ is_active: boolean }>>(`/admin/api-keys/${keyId}/toggle`);
+    const res = await request.put<API.Data<{ is_active: boolean }>>(`/admin/api-keys/${keyId}/toggle`);
     return res.data.data!;
   },
 };

@@ -1,6 +1,5 @@
 import '@tanstack/react-table';
 import type { OptionsItem } from './lib';
-import type { ColumnFiltersState, PaginationState } from '@tanstack/react-table';
 
 declare namespace API {
   type PrimaryKeyType = number;
@@ -19,8 +18,8 @@ declare namespace API {
 
   export interface SearchParams {
     kw?: string;
-    filters?: ColumnFiltersState;
-    pagination?: PaginationState;
+    filters?: { field: string, value: unknown; }[];
+    pagination?: { pageIndex: number, pageSize: number; };
   }
 
   export interface ResponseStruct {
@@ -36,12 +35,6 @@ declare namespace API {
   }
 
   export interface Data<T> {
-    errCode: number;
-    errMsg: string;
-    data?: T;
-  }
-
-  export interface SingleResponse<T> {
     errCode: number;
     errMsg: string;
     data?: T;

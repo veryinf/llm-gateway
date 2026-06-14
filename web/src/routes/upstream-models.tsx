@@ -12,15 +12,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { request } from '@/lib';
 import type { API } from '@/typings';
 
-export const Route = createFileRoute('/models')({
-  component: ModelsPage,
+export const Route = createFileRoute('/upstream-models')({
+  component: UpstreamModelsPage,
 });
 
 const pageInformation: PageInformation = {
-  name: 'models',
+  name: 'upstream-models',
   entityName: '模型',
-  page: { title: '模型路由管理', description: '配置模型名称到 Provider 的路由映射' },
-  breadcrumbs: [{ title: '路由' }, { title: '模型路由' }],
+  page: { title: '服务商模型', description: '管理各 Provider 下的模型详细信息' },
+  breadcrumbs: [{ title: '上游' }, { title: '服务商模型' }],
 };
 
 function formatTokens(value: number) {
@@ -35,7 +35,7 @@ function formatPrice(value: number) {
   return `$${value.toFixed(2)}`;
 }
 
-function ModelsPage() {
+function UpstreamModelsPage() {
   const { setBreadcrumbs } = useBreadcrumb();
   const [providerFilter, setProviderFilter] = useState<string>('all');
 
@@ -53,9 +53,8 @@ function ModelsPage() {
     value: String(p.id),
   }));
 
-  // Dynamic page name to force queryKey change when filter changes
   const dynamicPageName = useMemo(() => {
-    return providerFilter === 'all' ? 'models' : `models-p${providerFilter}`;
+    return providerFilter === 'all' ? 'upstream-models' : `upstream-models-p${providerFilter}`;
   }, [providerFilter]);
 
   const filteredService = useMemo<API.Service<Model>>(
@@ -71,10 +70,7 @@ function ModelsPage() {
   );
 
   const dynamicPageInfo = useMemo(
-    () => ({
-      ...pageInformation,
-      name: dynamicPageName,
-    }),
+    () => ({ ...pageInformation, name: dynamicPageName }),
     [dynamicPageName],
   );
 
@@ -95,6 +91,14 @@ function ModelsPage() {
       header: 'Provider',
       meta: { label: 'Provider', className: 'w-[140px]' },
       cell: ({ row }) => row.original.provider?.name ?? '-',
+    },
+    {
+      accessorKey: 'api_type',
+      header: 'API 类型',
+      meta: { label: 'API 类型', className: 'w-[90px]' },
+      cell: ({ row }) => (
+        <Badge variant="outline">{row.original.api_type === 'anthropic' ? 'Anthropic' : 'OpenAI'}</Badge>
+      ),
     },
     {
       accessorKey: 'max_context_tokens',
@@ -189,12 +193,18 @@ function ModelsPage() {
     updated_at: '',
   });
 
+  const apiTypeOptions = [
+    { label: 'OpenAI', value: 'openai' },
+    { label: 'Anthropic', value: 'anthropic' },
+  ];
+
   const renderForm = (form: any, _entity?: Model) => (
     <div className="flex flex-col gap-4 max-h-[70vh] overflow-y-auto pr-2">
       <div className="text-sm font-medium text-muted-foreground">基础信息</div>
       <FormFieldInput form={form} name="name" title="模型名称" required placeholder="例如: gpt-4o, claude-3-opus" />
       <FormFieldInput form={form} name="display_name" title="展示名" placeholder="用户友好的显示名称" />
       <FormFieldSelect form={form} name="provider_id" title="Provider" options={providerOptions} required />
+      <FormFieldSelect form={form} name="api_type" title="API 类型" options={apiTypeOptions} required />
       <FormFieldTextarea form={form} name="description" title="描述" placeholder="模型描述信息" rows={2} />
 
       <div className="text-sm font-medium text-muted-foreground border-t pt-4">容量与限制</div>
@@ -223,7 +233,7 @@ function ModelsPage() {
         <FormFieldSwitch form={form} name="is_embedding" title="嵌入" switchLabel="支持 Embeddings" />
       </div>
 
-      <FormFieldSwitch form={form} name="is_active" title="启用" switchLabel="启用此模型路由" />
+      <FormFieldSwitch form={form} name="is_active" title="启用" switchLabel="启用此服务商模型" />
     </div>
   );
 

@@ -87,7 +87,7 @@ func (h *RequestLogHandler) ListRequestLogs(c echo.Context) error {
 
 	var total int64
 	countSQL := "SELECT COUNT(*) FROM request_logs " + whereClause
-	if err := h.DuckDB.QueryRow(countSQL, args...).Scan(&total); err != nil {
+	if err := h.Store.QueryRow(countSQL, args...).Scan(&total); err != nil {
 		return h.Error(-20, err.Error())
 	}
 
@@ -106,7 +106,7 @@ func (h *RequestLogHandler) ListRequestLogs(c echo.Context) error {
 		FROM request_logs ` + whereClause + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
 
 	queryArgs := append(args, pageSize, offset)
-	rows, err := h.DuckDB.Query(querySQL, queryArgs...)
+	rows, err := h.Store.Query(querySQL, queryArgs...)
 	if err != nil {
 		return h.Error(-20, err.Error())
 	}
@@ -153,7 +153,7 @@ func (h *RequestLogHandler) GetRequestLogByTrace(c echo.Context) error {
 		created_at
 		FROM request_logs WHERE trace_id = ? ORDER BY created_at ASC`
 
-	rows, err := h.DuckDB.Query(querySQL, traceID)
+	rows, err := h.Store.Query(querySQL, traceID)
 	if err != nil {
 		return h.Error(-20, err.Error())
 	}
@@ -190,7 +190,7 @@ func (h *RequestLogHandler) GetRequestChunks(c echo.Context) error {
 	querySQL := `SELECT COALESCE(id, 0), trace_id, chunk_index, COALESCE(chunk_data, ''), created_at
 		FROM request_chunks WHERE trace_id = ? ORDER BY chunk_index ASC`
 
-	rows, err := h.DuckDB.Query(querySQL, traceID)
+	rows, err := h.Store.Query(querySQL, traceID)
 	if err != nil {
 		return h.Error(-20, err.Error())
 	}

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { LayoutDashboard, Users, Server, Cpu, ScrollText, Shield, Settings, Key, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Users, Server, Cpu, ScrollText, Shield, Settings, Key, BarChart3, Blocks, Globe } from 'lucide-react';
 import { Link, useLocation } from '@tanstack/react-router';
 import { NavUser } from '@/components/nav-user';
 import {
@@ -23,14 +23,18 @@ type MenuItem = {
 
 const menuSet = {
   dashboard: [{ title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard }],
-  management: [
+  upstream: [
+    { title: 'LLM 服务商', url: '/providers', icon: Server },
+    { title: '服务商模型', url: '/upstream-models', icon: Blocks },
+  ],
+  downstream: [
     { title: '用户管理', url: '/users', icon: Users },
     { title: 'API Key 管理', url: '/app-keys', icon: Key },
-    { title: 'LLM服务商', url: '/providers', icon: Server },
+    { title: '调用端模型', url: '/downstream-models', icon: Globe },
+  ],
+  routing: [
     { title: '模型路由', url: '/models', icon: Cpu },
     { title: '系统设置', url: '/settings', icon: Settings },
-  ],
-  analytics: [
     { title: '请求记录', url: '/request-logs', icon: ScrollText },
     { title: '用量统计', url: '/usage-stats', icon: BarChart3 },
   ],
@@ -63,10 +67,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarGroup>
 
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-          <SidebarGroupLabel>基础数据</SidebarGroupLabel>
+          <SidebarGroupLabel>路由</SidebarGroupLabel>
           <SidebarGroupContent className="flex flex-col gap-2">
             <SidebarMenu>
-              {menuSet.management.map((item) => (
+              {menuSet.routing.map((item) => (
                 <MenuItemRender key={item.url} item={item} />
               ))}
             </SidebarMenu>
@@ -74,10 +78,21 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarGroup>
 
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-          <SidebarGroupLabel>分析报告</SidebarGroupLabel>
+          <SidebarGroupLabel>上游</SidebarGroupLabel>
           <SidebarGroupContent className="flex flex-col gap-2">
             <SidebarMenu>
-              {menuSet.analytics.map((item) => (
+              {menuSet.upstream.map((item) => (
+                <MenuItemRender key={item.url} item={item} />
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+          <SidebarGroupLabel>下游</SidebarGroupLabel>
+          <SidebarGroupContent className="flex flex-col gap-2">
+            <SidebarMenu>
+              {menuSet.downstream.map((item) => (
                 <MenuItemRender key={item.url} item={item} />
               ))}
             </SidebarMenu>

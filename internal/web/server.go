@@ -1,17 +1,18 @@
 package web
 
 import (
+	"context"
 	"database/sql"
 	"io/fs"
-	"net/http"
-	"sync/atomic"
-
 	llmgateway "llm-gateway"
 	"llm-gateway/internal/core"
-	"llm-gateway/internal/router"
 	"llm-gateway/internal/service"
 	"llm-gateway/internal/web/common"
 	"llm-gateway/internal/web/handlers"
+	"log/slog"
+	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -19,20 +20,28 @@ import (
 )
 
 var (
-	adminPrefix = "/api/admin"
-	statsPrefix = "/api"
-	v1Prefix    = "/v1"
+	apiBizPrefix = "/api"
 )
 
-func InitHttpServer(db *gorm.DB, sqlDB *sql.DB, registry interface{}, modelRouter interface{}, providerSvc *service.ProviderService, statsSvc *service.StatsService, chunkSvc *service.RequestChunkService, cfg *core.Config) *echo.Echo {
+func InitHttpServer(db *gorm.DB, store *sql.DB, cfg *core.Config) *echo.Echo {
 	tokenManager := common.NewTokenManager()
 
 	e := echo.New()
+	e.Debug = cfg.IsDevelopment()
 	e.HideBanner = true
 	e.HTTPErrorHandler = common.LeErrorHandler
 
 	// 静态文件中间件放在认证之前，前端页面不需要登录
-	staticFS, _ := fs.Sub(llmgateway.StaticFS, "static")
+	// 优先检测外置资源目录 dataDir/assets，不存在则用嵌入资源
+	var staticFS fs.FS
+	assetsPath := filepath.Join(cfg.DataDir, "assets")
+	if _, err := os.Stat(assetsPath); err == nil {
+		staticFS = os.DirFS(assetsPath)
+		slog.Info("serving frontend from external assets", "path", assetsPath)
+	} else {
+		subFS, _ := fs.Sub(llmgateway.StaticFS, "assets")
+		staticFS = subFS
+	}
 	e.Use(middleware.StaticWithConfig(middleware.StaticConfig{
 		Skipper: func(c echo.Context) bool {
 			uri := c.Request().RequestURI
@@ -41,59 +50,51 @@ func InitHttpServer(db *gorm.DB, sqlDB *sql.DB, registry interface{}, modelRoute
 		HTML5:      true,
 		Filesystem: http.FS(staticFS),
 	}))
+	// 使用全局 LogService 的 JSON Handler
+	accessLogger := slog.New(service.DefaultLogService.JSONHandler())
+	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+		LogStatus:   true,
+		LogURI:      true,
+		LogMethod:   true,
+		HandleError: false,
+		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
+			accessLogger.LogAttrs(context.Background(), slog.LevelInfo, "REQUEST",
+				slog.String("method", v.Method),
+				slog.String("uri", v.URI),
+				slog.Int("status", v.Status),
+			)
+			return nil
+		},
+	}))
 
-	e.Use(middleware.Logger())
-
+	// 生产环境
 	if !cfg.IsDevelopment() {
 		e.Use(middleware.Recover())
 	}
 
-	e.Use(middleware.CORS())
+	base := common.BaseHandler{DB: db, Store: store, TokenManager: tokenManager, Config: cfg}
 
-	base := common.BaseHandler{DB: db, DuckDB: sqlDB, Config: cfg}
-
-	// Admin API (login, profile, user/provider/model/config CRUD) — uses LeMiddleware (JWT token)
-	adminApi := e.Group(adminPrefix)
-	adminApi.Use(common.LeMiddleware(common.LeMiddlewareConfig{
+	// 公共接口
+	bizApi := e.Group(apiBizPrefix)
+	bizApi.Use(common.LeMiddleware(common.LeMiddlewareConfig{
 		IgnorePaths: []string{
-			adminPrefix + "/login",
+			apiBizPrefix + "/auth/login",
 		},
 		TokenManager: tokenManager,
 	}))
-	(&handlers.AuthHandler{BaseHandler: base, TokenManager: tokenManager}).RegisterRoutes(adminApi)
-	(&handlers.ProfileHandler{BaseHandler: base}).RegisterRoutes(adminApi)
-	(&handlers.AdminHandler{BaseHandler: base, ProviderSvc: providerSvc}).RegisterRoutes(adminApi)
+	(&handlers.AuthHandler{BaseHandler: base}).RegisterRoutes(bizApi)
+	(&handlers.ProfileHandler{BaseHandler: base}).RegisterRoutes(bizApi)
+	(&handlers.ConfigHandler{BaseHandler: base}).RegisterRoutes(bizApi)
+	(&handlers.UserHandler{BaseHandler: base}).RegisterRoutes(bizApi)
+	// Health check
+	(&handlers.HealthHandler{BaseHandler: base}).RegisterRoutes(bizApi)
 
 	// LLM Gateway API — uses ProxyMiddleware (sk- API Key)
-	logDetail := &atomic.Bool{}
-	logDetail.Store(true)
-	v1 := e.Group(v1Prefix)
+	v1 := e.Group("/v1")
 	v1.Use(common.ProxyMiddleware())
-	(&handlers.GatewayHandler{BaseHandler: base, ModelRouter: modelRouter.(*router.ModelRouter), StatsSvc: statsSvc, ChunkSvc: chunkSvc, LogDetail: logDetail}).RegisterRoutes(v1)
-
+	(&handlers.GatewayHandler{BaseHandler: base}).RegisterRoutes(v1)
 	anthropic := e.Group("/anthropic")
 	anthropic.Use(common.ProxyMiddleware())
-	(&handlers.GatewayHandler{BaseHandler: base, ModelRouter: modelRouter.(*router.ModelRouter), StatsSvc: statsSvc, ChunkSvc: chunkSvc, LogDetail: logDetail}).RegisterRoutes(anthropic)
-
-	// Stats + Request Logs — uses LeMiddleware (JWT token)
-	apiGroup := e.Group(statsPrefix)
-	apiGroup.Use(common.LeMiddleware(common.LeMiddlewareConfig{
-		TokenManager: tokenManager,
-	}))
-	(&handlers.StatsHandler{BaseHandler: base}).RegisterRoutes(apiGroup)
-	(&handlers.RequestLogHandler{BaseHandler: base}).RegisterRoutes(apiGroup)
-
-	// Health check
-	e.GET("/health", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]interface{}{"status": "ok"})
-	})
-	e.GET("/health/ready", func(c echo.Context) error {
-		sqlDB, _ := db.DB()
-		if err := sqlDB.Ping(); err != nil {
-			return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{"status": "not ready"})
-		}
-		return c.JSON(http.StatusOK, map[string]interface{}{"status": "ready"})
-	})
-
+	(&handlers.GatewayHandler{BaseHandler: base}).RegisterRoutes(anthropic)
 	return e
 }

@@ -26,13 +26,13 @@ func (h *StatsHandler) RegisterRoutes(g *echo.Group) {
 // ======================== Token Stats ========================
 
 type tokenStatsItem struct {
-	UserID           uint    `json:"user_id"`
-	Username         string  `json:"username"`
-	Department       string  `json:"department"`
-	ModelName        string  `json:"model_name"`
-	PromptTokens     int64   `json:"prompt_tokens"`
-	CompletionTokens int64   `json:"completion_tokens"`
-	TotalTokens      int64   `json:"total_tokens"`
+	UserID           uint   `json:"user_id"`
+	Username         string `json:"username"`
+	Department       string `json:"department"`
+	ModelName        string `json:"model_name"`
+	PromptTokens     int64  `json:"prompt_tokens"`
+	CompletionTokens int64  `json:"completion_tokens"`
+	TotalTokens      int64  `json:"total_tokens"`
 }
 
 func (h *StatsHandler) TokenStats(c echo.Context) error {
@@ -66,7 +66,7 @@ func (h *StatsHandler) TokenStats(c echo.Context) error {
 
 	query += " GROUP BY user_id, model_name ORDER BY total_tokens DESC"
 
-	rows, err := h.DuckDB.Query(query, args...)
+	rows, err := h.Store.Query(query, args...)
 	if err != nil {
 		return h.Error(-20, err.Error())
 	}
@@ -92,10 +92,10 @@ func (h *StatsHandler) TokenStats(c echo.Context) error {
 		ids = append(ids, id)
 	}
 	var users []model.User
-	h.DB.Where("id IN ?", ids).Find(&users)
+	h.DB.Where("uid IN ?", ids).Find(&users)
 	userMap := make(map[uint]*model.User, len(users))
 	for i := range users {
-		userMap[users[i].ID] = &users[i]
+		userMap[users[i].UID] = &users[i]
 	}
 	for i := range results {
 		if u, ok := userMap[results[i].UserID]; ok {
@@ -136,7 +136,7 @@ func (h *StatsHandler) RequestStats(c echo.Context) error {
 
 	query += " GROUP BY DATE(created_at) ORDER BY date ASC"
 
-	rows, err := h.DuckDB.Query(query, args...)
+	rows, err := h.Store.Query(query, args...)
 	if err != nil {
 		return h.Error(-20, err.Error())
 	}
@@ -179,7 +179,7 @@ func (h *StatsHandler) CostStats(c echo.Context) error {
 		GROUP BY DATE(created_at), model_name
 		ORDER BY date ASC`
 
-	rows, err := h.DuckDB.Query(query, start, end)
+	rows, err := h.Store.Query(query, start, end)
 	if err != nil {
 		return h.Error(-20, err.Error())
 	}
@@ -226,7 +226,7 @@ func (h *StatsHandler) BehaviorStats(c echo.Context) error {
 
 	query += " GROUP BY user_id, model_name ORDER BY count DESC LIMIT 100"
 
-	rows, err := h.DuckDB.Query(query, args...)
+	rows, err := h.Store.Query(query, args...)
 	if err != nil {
 		return h.Error(-20, err.Error())
 	}
@@ -252,10 +252,10 @@ func (h *StatsHandler) BehaviorStats(c echo.Context) error {
 		ids = append(ids, id)
 	}
 	var users []model.User
-	h.DB.Where("id IN ?", ids).Find(&users)
+	h.DB.Where("uid IN ?", ids).Find(&users)
 	userMap := make(map[uint]*model.User, len(users))
 	for i := range users {
-		userMap[users[i].ID] = &users[i]
+		userMap[users[i].UID] = &users[i]
 	}
 	for i := range results {
 		if u, ok := userMap[results[i].UserID]; ok {
@@ -302,7 +302,7 @@ func (h *StatsHandler) DashboardOverview(c echo.Context) error {
 	}
 
 	var agg aggResult
-	err = h.DuckDB.QueryRow(`SELECT
+	err = h.Store.QueryRow(`SELECT
 		COUNT(*) as total_requests,
 		COALESCE(SUM(total_tokens), 0) as total_tokens,
 		COALESCE(SUM(cost), 0) as total_cost,
@@ -328,7 +328,7 @@ func (h *StatsHandler) DashboardOverview(c echo.Context) error {
 		overview.SuccessRate = float64(agg.SuccessCount) / float64(agg.TotalRequests) * 100
 	}
 
-	topRows, err := h.DuckDB.Query(`SELECT model_name, COUNT(*) as count
+	topRows, err := h.Store.Query(`SELECT model_name, COUNT(*) as count
 		FROM request_logs
 		WHERE created_at BETWEEN ? AND ?
 		GROUP BY model_name

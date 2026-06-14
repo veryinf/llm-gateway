@@ -77,7 +77,7 @@ export const statsService = {
 
   async fetchOverview(start?: string, end?: string): Promise<DashboardOverview> {
     const qs = buildDateParams(start, end);
-    const res = await request.get<API.SingleResponse<DashboardOverview>>(`/dashboard/overview?${qs}`);
+    const res = await request.get<API.Data<DashboardOverview>>(`/dashboard/overview?${qs}`);
     return res.data.data!;
   },
 };

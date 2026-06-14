@@ -2,13 +2,13 @@ import { request } from '@/lib';
 import type { API } from '@/typings';
 
 export interface SessionUser {
-  id: number;
+  uid: number;
   username: string;
   name: string;
   phone: string;
   department: string;
   role: 'admin' | 'user' | 'viewer';
-  is_active: boolean;
+  status: string;
 }
 
 export interface LoginParams {
@@ -17,7 +17,7 @@ export interface LoginParams {
 }
 
 export async function login(params: LoginParams): Promise<void> {
-  const res = await request.post<API.SingleResponse<{ token: string }>>('/admin/login', params);
+  const res = await request.post<API.Data<{ token: string }>>('/auth/login', params);
   if (res.data.errCode !== 0) {
     throw new Error(res.data.errMsg || '登录失败');
   }
@@ -29,7 +29,7 @@ export async function fetchProfile(): Promise<SessionUser | null> {
     return null;
   }
   try {
-    const res = await request.get<API.SingleResponse<SessionUser>>('/admin/profile');
+    const res = await request.get<API.Data<SessionUser>>('/profile');
     if (res.data.errCode !== 0) {
       return null;
     }
@@ -39,6 +39,14 @@ export async function fetchProfile(): Promise<SessionUser | null> {
   }
 }
 
-export function logout(): void {
+export async function logoutApi(): Promise<void> {
+  try {
+    await request.post('/auth/logout');
+  } catch {
+    // 即使失败也继续清除本地token
+  }
+}
+
+export function logoutLocal(): void {
   localStorage.removeItem('accessToken');
 }

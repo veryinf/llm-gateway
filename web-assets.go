@@ -2,5 +2,5 @@ package llmgateway
 
 import "embed"
 
-//go:embed static
+//go:embed assets
 var StaticFS embed.FS

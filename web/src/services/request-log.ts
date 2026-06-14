@@ -56,12 +56,12 @@ export const requestLogService = {
   },
 
   async fetchByTraceId(traceId: string): Promise<RequestLogEntry[]> {
-    const res = await request.get<API.SingleResponse<RequestLogEntry[]>>(`/request-logs/${traceId}`);
+    const res = await request.get<API.Data<RequestLogEntry[]>>(`/request-logs/${traceId}`);
     return res.data.data ?? [];
   },
 
   async fetchChunks(traceId: string): Promise<RequestChunk[]> {
-    const res = await request.get<API.SingleResponse<RequestChunk[]>>(`/request-logs/${traceId}/chunks`);
+    const res = await request.get<API.Data<RequestChunk[]>>(`/request-logs/${traceId}/chunks`);
     return res.data.data ?? [];
   },
 };

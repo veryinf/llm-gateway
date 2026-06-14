@@ -15,8 +15,9 @@ import (
 
 type BaseHandler struct {
 	DB           *gorm.DB
-	DuckDB       *sql.DB
+	Store        *sql.DB
 	Config       *core.Config
+	TokenManager *TokenManager
 }
 
 func (h *BaseHandler) Context(c echo.Context) *LeContext {

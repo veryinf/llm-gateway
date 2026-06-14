@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchProfile, logout, type SessionUser } from '@/services/auth';
+import { fetchProfile, logoutApi, logoutLocal, type SessionUser } from '@/services/auth';
 
 export function useAuth() {
   const token = localStorage.getItem('accessToken');
@@ -24,8 +24,9 @@ export function useAuth() {
     refresh() {
       return queryClient.invalidateQueries({ queryKey: ['current-user'] });
     },
-    logout() {
-      logout();
+    async logout() {
+      await logoutApi();
+      logoutLocal();
       queryClient.setQueryData(['current-user'], null);
       queryClient.removeQueries({ queryKey: ['current-user'] });
     },

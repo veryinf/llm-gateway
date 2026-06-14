@@ -16,7 +16,7 @@ export const configService = {
   },
 
   async update(key: string, value: string) {
-    const res = await request.put<API.SingleResponse<Config>>('/admin/configs', { key, value });
+    const res = await request.put<API.Data<Config>>('/admin/configs', { key, value });
     return res.data;
   },
 };

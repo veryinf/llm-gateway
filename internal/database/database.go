@@ -2,13 +2,14 @@ package database
 
 import (
 	"database/sql"
-	"fmt"
 	"log/slog"
 	"path/filepath"
+	"strings"
 
 	"llm-gateway/internal/model"
 
 	"github.com/glebarez/sqlite"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
@@ -40,6 +41,7 @@ func InitDB(dataDir string) (*gorm.DB, *sql.DB) {
 		&model.APIKey{},
 		&model.Provider{},
 		&model.Model{},
+		&model.DownstreamModel{},
 		&model.Config{},
 	); err != nil {
 		slog.Error("failed to auto migrate sqlite", "error", err)
@@ -56,41 +58,39 @@ func InitDB(dataDir string) (*gorm.DB, *sql.DB) {
 	return db, sqlDB
 }
 
-func SeedDefaultAdmin(db *gorm.DB, adminPassword string) {
-	if adminPassword == "" {
-		slog.Warn("admin_password not set, default admin not created")
-		return
-	}
+const (
+	defaultUsername = "root"
+	defaultPassword = "123456"
+)
 
+// SeedDefaultUser 首次启动时自动创建默认 admin 用户。
+func SeedDefaultUser(db *gorm.DB) {
 	var count int64
-	if err := db.Model(&model.User{}).Count(&count).Error; err != nil {
-		return
-	}
+	db.Model(&model.User{}).Count(&count)
 	if count > 0 {
 		return
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(adminPassword), bcrypt.DefaultCost)
+	hashed, err := bcrypt.GenerateFromPassword([]byte(defaultPassword), bcrypt.DefaultCost)
 	if err != nil {
-		slog.Error("failed to hash admin password", "error", err)
+		slog.Error("failed to hash default password", "error", err)
 		return
 	}
 
-	user := &model.User{
-		Username:     "admin",
-		PasswordHash: string(hash),
-		Name:         "Administrator",
-		Role:         model.RoleAdmin,
-		IsActive:     true,
-	}
+	ak := strings.ReplaceAll(uuid.New().String(), "-", "")[:16]
+	sk := strings.ReplaceAll(uuid.New().String(), "-", "")
 
-	if err := db.Create(user).Error; err != nil {
-		slog.Error("failed to create default admin", "error", err)
+	user := model.User{
+		Username:  defaultUsername,
+		Password:  string(hashed),
+		Status:    "active",
+		AccessKey: ak,
+		SecretKey: sk,
+	}
+	if err := db.Create(&user).Error; err != nil {
+		slog.Error("failed to create default user", "error", err)
 		return
 	}
 
-	slog.Info("default admin user initialized")
+	slog.Info("created default user", "username", user.Username)
 }
-
-// unused import guard
-var _ = fmt.Sprintf

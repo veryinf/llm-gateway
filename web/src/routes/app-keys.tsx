@@ -31,7 +31,7 @@ function AppKeysPage() {
   const { users } = useUsers();
 
   const userOptions = useMemo(
-    () => users.map((u) => ({ label: u.name || u.username, value: String(u.id) })),
+    () => users.map((u) => ({ label: u.name || u.username, value: String(u.uid) })),
     [users],
   );
 
@@ -44,7 +44,7 @@ function AppKeysPage() {
         let list = await apiKeyService.listAll();
         if (params.filters) {
           for (const f of params.filters) {
-            if (f.id === 'user_id' && Array.isArray(f.value) && f.value.length > 0) {
+            if (f.field === 'user_id' && Array.isArray(f.value) && f.value.length > 0) {
               list = list.filter((k) => (f.value as string[]).includes(String(k.user_id)));
             }
           }
@@ -93,7 +93,7 @@ function AppKeysPage() {
       enableColumnFilter: true,
       meta: { label: '用户', className: 'w-[100px]', emuns: userOptions },
       cell: ({ row }) => {
-        const user = users.find((u) => u.id === row.original.user_id);
+        const user = users.find((u) => u.uid === row.original.user_id);
         return user?.name || user?.username || row.original.user_id;
       },
     },

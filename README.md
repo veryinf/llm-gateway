@@ -146,7 +146,7 @@ curl http://localhost:3001/v1/chat/completions \
 | 参数 | 环境变量 | 默认值 | 说明 |
 |---|---|---|---|
 | `--http-addr` | `HTTP_ADDR` | `:3001` | 监听地址 |
-| `--data-dir` | `DATA_DIR` | `./data` | 数据目录（数据库、日志等） |
+| `--data-dir` | `DATA_DIR` | `./db` | 数据目录（数据库、日志等） |
 | `--admin-password` | `ADMIN_PASSWORD` | 空 | 管理员初始密码（空则不自动创建） |
 | `--api-key-prefix` | `API_KEY_PREFIX` | `sk-` | API Key 前缀 |
 | `--default-qpm` | `DEFAULT_QPM` | `60` | 每 Key 默认 QPM 限流 |

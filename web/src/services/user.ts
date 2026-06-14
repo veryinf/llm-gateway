@@ -2,16 +2,14 @@ import { request } from '@/lib';
 import type { API } from '@/typings';
 
 export interface User {
-  id: number;
+  uid: number;
   username: string;
   name: string;
   phone: string;
   department: string;
   role: 'admin' | 'user' | 'viewer';
-  is_active: boolean;
-  api_key_count: number;
-  created_at: string;
-  updated_at: string;
+  status: string;
+  apiKeyCount: number;
 }
 
 export interface CreateUserParams {
@@ -24,33 +22,31 @@ export interface CreateUserParams {
 }
 
 export const userService: API.Service<User> = {
-  primaryKey: (entity) => entity.id,
+  primaryKey: (entity) => entity.uid,
   title: (entity) => entity.username,
 
-  async search(_params) {
-    const res = await request.get<API.DataSet<User>>('/admin/users');
+  async search(params) {
+    const res = await request.post<API.DataSet<User>>('/user/search', params);
     return res.data;
   },
 
-  async fetch(id) {
-    const res = await request.get<API.SingleResponse<User>>('/admin/users');
-    const list = (res.data.data as unknown as User[]) ?? [];
-    const user = list.find((u) => u.id === id);
-    return { errCode: 0, errMsg: 'ok', data: user };
+  async fetch(uid) {
+    const res = await request.post<API.Data<User>>('/user/fetch', { uid });
+    return res.data;
   },
 
   async add(params) {
-    await request.post('/admin/users', params);
-    return { errCode: 0, errMsg: 'ok' };
+    const res = await request.post<API.ResponseStruct>('/user/add', params);
+    return res.data;
   },
 
-  async update(id, params) {
-    await request.put(`/admin/users/${id}`, params);
-    return { errCode: 0, errMsg: 'ok' };
+  async update(uid, params) {
+    const res = await request.post('/user/update', { uid: uid, ...params });
+    return res.data;
   },
 
   async delete(id) {
-    await request.delete(`/admin/users/${id}`);
-    return { errCode: 0, errMsg: 'ok' };
+    const res = await request.post('/user/remove', { uid: id });
+    return res.data;
   },
 };

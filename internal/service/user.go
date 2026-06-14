@@ -39,7 +39,7 @@ func (s *UserService) Login(username, password string) (*model.User, error) {
 		return nil, err
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
 		return nil, err
 	}
 
@@ -54,13 +54,13 @@ func (s *UserService) CreateUser(username, password, name, phone, department str
 	}
 
 	user := &model.User{
-		Username:     username,
-		PasswordHash: string(hash),
-		Name:         name,
-		Phone:        phone,
-		Department:   department,
-		Role:         role,
-		IsActive:     true,
+		Username:   username,
+		Password:   string(hash),
+		Name:       name,
+		Phone:      phone,
+		Department: department,
+		Role:       role,
+		Status:     "active",
 	}
 
 	if err := s.db.Create(user).Error; err != nil {

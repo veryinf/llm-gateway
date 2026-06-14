@@ -1,11 +1,7 @@
-package model
-
-import "time"
+﻿package model
 
 type Config struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	Key       string    `gorm:"uniqueIndex;size:64;not null" json:"key"`
-	Value     string    `gorm:"size:1024;not null" json:"value"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Key         string `json:"key" gorm:"primaryKey;size:128"`
+	Value       string `json:"value" gorm:"type:text"`
+	Description string `json:"description"`
 }

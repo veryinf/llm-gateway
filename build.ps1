@@ -4,26 +4,18 @@
 
 $BinaryName = "lgw.exe"
 $BuildDir = "output"
-$DataDir = "data"
+$DataDir = "db"
 $WebDir = "web"
 
 # Parse $args manually (PowerShell doesn't support -- prefix in param)
 $Command = "help"
-$logfile = $null
+$LogBoth = $false
 $help = $false
 
 $i = 0
 while ($i -lt $args.Count) {
     switch ($args[$i]) {
-        '--logfile' {
-            $i++
-            if ($i -lt $args.Count -and -not $args[$i].StartsWith('--')) {
-                $logfile = $args[$i]
-            } else {
-                $logfile = "output/build.log"
-                $i--
-            }
-        }
+        '--logfile' { $LogBoth = $true }
         '--help' { $help = $true }
         default {
             if ($Command -eq "help") { $Command = $args[$i] }
@@ -33,27 +25,14 @@ while ($i -lt $args.Count) {
 }
 if ($help) { $Command = "help" }
 
-# Initialize log file if specified
-if ($logfile) {
-    $logDir = Split-Path -Parent $logfile
-    if ($logDir -and !(Test-Path $logDir)) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
-    Set-Content -Path $logfile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') Build started`n"
-}
-
 function Write-Tee {
     param([string]$msg, [string]$color)
     if ($color) { Write-Host $msg -ForegroundColor $color } else { Write-Host $msg }
-    if ($logfile) { Add-Content -Path $logfile -Value $msg }
 }
 
 function Run {
     param([string]$cmd)
-    if ($logfile) {
-        $output = cmd.exe /c "$cmd 2>&1"
-        foreach ($line in $output) { Write-Tee $line }
-    } else {
-        Invoke-Expression $cmd
-    }
+    Invoke-Expression $cmd
 }
 
 function Write-Step { param([string]$msg) Write-Tee "==> $msg" "Cyan" }
@@ -90,7 +69,7 @@ switch ($Command) {
     "build" {
         Write-Step "Building $BinaryName..."
         New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
-        Run "go build -ldflags=""$LdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/gateway/"
+        Run "go build -ldflags=""$LdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/"
         if ($LASTEXITCODE -eq 0) {
             Write-OK "Build success: $BuildDir/$BinaryName"
         } else {
@@ -103,10 +82,12 @@ switch ($Command) {
         $BinaryName = "lgw-dev.exe"
         Write-Step "Building and starting server in dev mode..."
         New-Item -ItemType Directory -Force -Path $DataDir, $BuildDir | Out-Null
-        Run "go build -ldflags=""$LdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/gateway/"
+        Run "go build -ldflags=""$LdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/"
         if ($LASTEXITCODE -ne 0) { Write-Err "Build failed"; exit $LASTEXITCODE }
         Write-OK "Build done, starting..."
-        & "$BuildDir/$BinaryName"
+        $startArgs = @()
+        if ($LogBoth) { $startArgs += "--log", "both" }
+        & "$BuildDir/$BinaryName" @startArgs
     }
 
     "build-all" {
@@ -122,7 +103,7 @@ switch ($Command) {
         Copy-Item -Recurse "$WebDir/dist/*" "static/"
         Write-Step "Building $BinaryName (with embedded frontend)..."
         New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
-        Run "go build -ldflags=""$LdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/gateway/"
+        Run "go build -ldflags=""$LdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/"
         if ($LASTEXITCODE -eq 0) { Write-OK "Build all → $BuildDir/$BinaryName (standalone, frontend embedded)" }
     }
 
@@ -150,15 +131,12 @@ switch ($Command) {
         Write-Host "  help           Show this help"
         Write-Host ""
         Write-Host "Options:" -ForegroundColor Yellow
-        Write-Host "  --logfile [path]  Mirror output to a log file (default: output/build.log)"
-        Write-Host "  --help            Show this help"
+        Write-Host "  --logfile        Pass --log both to the binary (output to console + file)"
+        Write-Host "  --help           Show this help"
         Write-Host ""
         Write-Host "Examples:" -ForegroundColor Yellow
         Write-Host "  .\build.ps1 dev                         # Start backend"
-        Write-Host "  .\build.ps1 dev-frontend                # Start frontend"
-        Write-Host "  .\build.ps1 build-all                   # Production build"
-        Write-Host "  .\build.ps1 dev --logfile               # Dev with log (default path)"
-        Write-Host "  .\build.ps1 build --logfile build.log   # Build with custom log path"
+        Write-Host "  .\build.ps1 dev --logfile               # Dev with console + file logging"
         Write-Host ""
     }
 }

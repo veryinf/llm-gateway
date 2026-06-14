@@ -8,11 +8,13 @@ llm-gateway.exe
 gcc/
 
 # Data
-data/*.db
-data/*.db.wal
-data/*.db-wal
-data/*.db-shm
-!data/.gitkeep
+db/*.db
+db/*.db.wal
+db/*.db-wal
+db/*.db-shm
+db/*.duckdb
+db/*.duckdb.wal
+!db/.gitkeep
 
 # IDE
 .idea/

@@ -19,24 +19,17 @@ const API_KEY = import.meta.env.VITE_API_KEY || '';
 const API_SECRET = import.meta.env.VITE_API_SECRET || '';
 
 // ============================================================
-// API 签名头生成
-// ============================================================
-function buildSignatureHeaders(): Record<string, string> {
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const signature = md5(timestamp + API_SECRET);
-  return {
-    'X-Api-Key': API_KEY,
-    'X-Api-Time': timestamp,
-    'X-Api-Signature': signature,
-  };
-}
-
-// ============================================================
 // 获取鉴权头
 // ============================================================
 function getAuthHeaders(): Record<string, string> {
   if (AUTH_MODE === 'signature') {
-    return buildSignatureHeaders();
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const signature = md5(timestamp + API_SECRET);
+    return {
+      'X-Api-Key': API_KEY,
+      'X-Api-Time': timestamp,
+      'X-Api-Signature': signature,
+    };
   }
   const token = localStorage.getItem('accessToken');
   if (token) {

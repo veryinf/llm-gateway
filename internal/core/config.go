@@ -11,18 +11,12 @@ type BuildInfo struct {
 
 // Config 静态配置，启动后不变
 type Config struct {
-	DataDir           string
-	HTTPAddr          string
-	AdminPassword     string
-	APIKeyPrefix      string
-	DefaultQPM        int
-	GlobalQPM         int
-	StatsBufferSize   int
-	StatsFlushInterval time.Duration
-	StatsFlushBatch        int
-	RequestLogRetentionDays int
-	Build                  BuildInfo
-	StartTime         time.Time
+	DataDir   string
+	HttpAddr  string
+	LogMode   string
+	LogLevel  string
+	Build     BuildInfo
+	StartTime time.Time
 }
 
 func (c *Config) IsDevelopment() bool {

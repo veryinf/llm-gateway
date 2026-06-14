@@ -81,11 +81,15 @@ func SeedDefaultUser(db *gorm.DB) {
 	sk := strings.ReplaceAll(uuid.New().String(), "-", "")
 
 	user := model.User{
-		Username:  defaultUsername,
-		Password:  string(hashed),
-		Status:    "active",
-		AccessKey: ak,
-		SecretKey: sk,
+		Username:   defaultUsername,
+		Password:   string(hashed),
+		Name:       "管理员",
+		Phone:      "13012345678",
+		Department: "系统管理",
+		Role:       model.RoleAdmin,
+		Status:     "active",
+		AccessKey:  ak,
+		SecretKey:  sk,
 	}
 	if err := db.Create(&user).Error; err != nil {
 		slog.Error("failed to create default user", "error", err)

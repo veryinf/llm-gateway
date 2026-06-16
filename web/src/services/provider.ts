@@ -2,70 +2,62 @@ import { request } from '@/lib';
 import type { API } from '@/typings';
 
 export interface Provider {
-  id: number;
-  name: string;
-  base_url: string;
-  api_key?: string;
-  support_openai: boolean;
-  openai_base_url: string;
-  support_anthropic: boolean;
-  anthropic_base_url: string;
-  preferred_api: string;
-  is_active: boolean;
-  model_count?: number;
-  created_at: string;
-  updated_at: string;
+  providerId: number;
+  title: string;
+  baseUrl: string;
+  apiKey?: string;
+  supportOpenai: boolean;
+  openaiBaseUrl: string;
+  supportAnthropic: boolean;
+  anthropicBaseUrl: string;
+  preferredApi: string;
+  isActive: boolean;
+  modelCount?: number;
 }
 
 export const providerService: API.Service<Provider> = {
-  primaryKey: (entity) => entity.id,
-  title: (entity) => entity.name,
+  primaryKey: (entity) => entity.providerId,
+  title: (entity) => entity.title,
 
-  async search() {
-    const res = await request.get<API.DataSet<Provider>>('/admin/providers');
+  async search(params) {
+    const res = await request.post<API.DataSet<Provider>>('/providers/search', params);
     return res.data;
   },
 
-  async fetch(id) {
-    const res = await request.get<API.Data<Provider>>('/admin/providers');
-    const list = (res.data.data as unknown as Provider[]) ?? [];
-    const provider = list.find((p) => p.id === id);
-    return { errCode: 0, errMsg: 'ok', data: provider };
+  async fetch(providerId) {
+    const res = await request.post<API.Data<Provider>>('/providers/fetch', { providerId });
+    return res.data;
   },
 
   async add(params) {
-    await request.post('/admin/providers', params);
-    return { errCode: 0, errMsg: 'ok' };
+    const res = await request.post<API.ResponseStruct>('/providers/add', params);
+    return res.data;
   },
 
-  async update(id, params) {
-    const { models, ...providerFields } = params as any;
-    await request.put(`/admin/providers/${id}`, {
-      provider: providerFields,
-      models: models ?? undefined,
-    });
-    return { errCode: 0, errMsg: 'ok' };
+  async update(providerId, params) {
+    const res = await request.post('/providers/update', { providerId, ...params });
+    return res.data;
   },
 
-  async delete(id) {
-    await request.delete(`/admin/providers/${id}`);
-    return { errCode: 0, errMsg: 'ok' };
+  async delete(providerId) {
+    const res = await request.post('/providers/remove', { providerId });
+    return res.data;
   },
 };
 
-export async function fetchProviderModels(base_url: string, api_key: string, api_type: string): Promise<{ id: string }[]> {
-  const res = await request.post<API.DataSet<{ id: string }>>('/admin/providers/fetch-models', {
-    base_url,
-    api_key,
-    api_type,
+export async function fetchProviderModels(baseUrl: string, apiKey: string, apiType: string): Promise<{ id: string }[]> {
+  const res = await request.post<API.DataSet<{ id: string }>>('/providers/fetch-models', {
+    baseUrl,
+    apiKey,
+    apiType,
   });
   return res.data.dataSet ?? [];
 }
 
-export async function batchImportProviderModels(provider_id: number, model_names: string[]): Promise<{ created: number; skipped: number }> {
+export async function batchImportProviderModels(providerId: number, modelNames: string[]): Promise<{ created: number; skipped: number }> {
   const res = await request.post<API.Data<{ created: number; skipped: number }>>(
-    '/admin/providers/batch-import-models',
-    { provider_id, model_names },
+    '/providers/batch-import-models',
+    { providerId, modelNames },
   );
   return res.data.data!;
 }

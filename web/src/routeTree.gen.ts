@@ -10,10 +10,10 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UsersRouteImport } from './routes/users'
-import { Route as UpstreamModelsRouteImport } from './routes/upstream-models'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RequestLogsRouteImport } from './routes/request-logs'
 import { Route as ProvidersRouteImport } from './routes/providers'
+import { Route as ProviderModelsRouteImport } from './routes/provider-models'
 import { Route as ModelsRouteImport } from './routes/models'
 import { Route as KeysRouteImport } from './routes/keys'
 import { Route as DownstreamModelsRouteImport } from './routes/downstream-models'
@@ -24,11 +24,6 @@ import { Route as AuthLoginRouteImport } from './routes/auth/login'
 const UsersRoute = UsersRouteImport.update({
   id: '/users',
   path: '/users',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const UpstreamModelsRoute = UpstreamModelsRouteImport.update({
-  id: '/upstream-models',
-  path: '/upstream-models',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -44,6 +39,11 @@ const RequestLogsRoute = RequestLogsRouteImport.update({
 const ProvidersRoute = ProvidersRouteImport.update({
   id: '/providers',
   path: '/providers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProviderModelsRoute = ProviderModelsRouteImport.update({
+  id: '/provider-models',
+  path: '/provider-models',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ModelsRoute = ModelsRouteImport.update({
@@ -83,10 +83,10 @@ export interface FileRoutesByFullPath {
   '/downstream-models': typeof DownstreamModelsRoute
   '/keys': typeof KeysRoute
   '/models': typeof ModelsRoute
+  '/provider-models': typeof ProviderModelsRoute
   '/providers': typeof ProvidersRoute
   '/request-logs': typeof RequestLogsRoute
   '/settings': typeof SettingsRoute
-  '/upstream-models': typeof UpstreamModelsRoute
   '/users': typeof UsersRoute
   '/auth/login': typeof AuthLoginRoute
 }
@@ -96,10 +96,10 @@ export interface FileRoutesByTo {
   '/downstream-models': typeof DownstreamModelsRoute
   '/keys': typeof KeysRoute
   '/models': typeof ModelsRoute
+  '/provider-models': typeof ProviderModelsRoute
   '/providers': typeof ProvidersRoute
   '/request-logs': typeof RequestLogsRoute
   '/settings': typeof SettingsRoute
-  '/upstream-models': typeof UpstreamModelsRoute
   '/users': typeof UsersRoute
   '/auth/login': typeof AuthLoginRoute
 }
@@ -110,10 +110,10 @@ export interface FileRoutesById {
   '/downstream-models': typeof DownstreamModelsRoute
   '/keys': typeof KeysRoute
   '/models': typeof ModelsRoute
+  '/provider-models': typeof ProviderModelsRoute
   '/providers': typeof ProvidersRoute
   '/request-logs': typeof RequestLogsRoute
   '/settings': typeof SettingsRoute
-  '/upstream-models': typeof UpstreamModelsRoute
   '/users': typeof UsersRoute
   '/auth/login': typeof AuthLoginRoute
 }
@@ -125,10 +125,10 @@ export interface FileRouteTypes {
     | '/downstream-models'
     | '/keys'
     | '/models'
+    | '/provider-models'
     | '/providers'
     | '/request-logs'
     | '/settings'
-    | '/upstream-models'
     | '/users'
     | '/auth/login'
   fileRoutesByTo: FileRoutesByTo
@@ -138,10 +138,10 @@ export interface FileRouteTypes {
     | '/downstream-models'
     | '/keys'
     | '/models'
+    | '/provider-models'
     | '/providers'
     | '/request-logs'
     | '/settings'
-    | '/upstream-models'
     | '/users'
     | '/auth/login'
   id:
@@ -151,10 +151,10 @@ export interface FileRouteTypes {
     | '/downstream-models'
     | '/keys'
     | '/models'
+    | '/provider-models'
     | '/providers'
     | '/request-logs'
     | '/settings'
-    | '/upstream-models'
     | '/users'
     | '/auth/login'
   fileRoutesById: FileRoutesById
@@ -165,10 +165,10 @@ export interface RootRouteChildren {
   DownstreamModelsRoute: typeof DownstreamModelsRoute
   KeysRoute: typeof KeysRoute
   ModelsRoute: typeof ModelsRoute
+  ProviderModelsRoute: typeof ProviderModelsRoute
   ProvidersRoute: typeof ProvidersRoute
   RequestLogsRoute: typeof RequestLogsRoute
   SettingsRoute: typeof SettingsRoute
-  UpstreamModelsRoute: typeof UpstreamModelsRoute
   UsersRoute: typeof UsersRoute
   AuthLoginRoute: typeof AuthLoginRoute
 }
@@ -180,13 +180,6 @@ declare module '@tanstack/react-router' {
       path: '/users'
       fullPath: '/users'
       preLoaderRoute: typeof UsersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/upstream-models': {
-      id: '/upstream-models'
-      path: '/upstream-models'
-      fullPath: '/upstream-models'
-      preLoaderRoute: typeof UpstreamModelsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -208,6 +201,13 @@ declare module '@tanstack/react-router' {
       path: '/providers'
       fullPath: '/providers'
       preLoaderRoute: typeof ProvidersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/provider-models': {
+      id: '/provider-models'
+      path: '/provider-models'
+      fullPath: '/provider-models'
+      preLoaderRoute: typeof ProviderModelsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/models': {
@@ -261,10 +261,10 @@ const rootRouteChildren: RootRouteChildren = {
   DownstreamModelsRoute: DownstreamModelsRoute,
   KeysRoute: KeysRoute,
   ModelsRoute: ModelsRoute,
+  ProviderModelsRoute: ProviderModelsRoute,
   ProvidersRoute: ProvidersRoute,
   RequestLogsRoute: RequestLogsRoute,
   SettingsRoute: SettingsRoute,
-  UpstreamModelsRoute: UpstreamModelsRoute,
   UsersRoute: UsersRoute,
   AuthLoginRoute: AuthLoginRoute,
 }

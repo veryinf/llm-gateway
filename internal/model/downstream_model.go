@@ -12,5 +12,5 @@ type DownstreamModel struct {
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 
-	UpstreamModel *Model `gorm:"foreignKey:UpstreamModelID" json:"upstream_model,omitempty"`
+	UpstreamModel *ProviderModel `gorm:"foreignKey:UpstreamModelID" json:"upstream_model,omitempty"`
 }

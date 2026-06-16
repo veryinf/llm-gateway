@@ -29,7 +29,7 @@ function DownstreamModelsPage() {
   }, []);
 
   const { data: upstreamModels } = useQuery({
-    queryKey: ['upstream-models-list'],
+    queryKey: ['provider-models-list'],
     queryFn: () => modelService.search({}),
   });
 
@@ -41,17 +41,17 @@ function DownstreamModelsPage() {
   const providerMap = useMemo(() => {
     const map: Record<number, Provider> = {};
     (providers?.dataSet ?? []).forEach((p: Provider) => {
-      map[p.id] = p;
+      map[p.providerId] = p;
     });
     return map;
   }, [providers]);
 
   const upstreamModelOptions = useMemo(() => {
     return (upstreamModels?.dataSet ?? []).map((m: Model) => {
-      const provider = providerMap[m.provider_id];
+      const provider = providerMap[m.providerId];
       return {
-        label: `${m.display_name || m.name} (${provider?.name ?? '未知'})`,
-        value: String(m.id),
+        label: `${m.displayName || m.name} (${provider?.title ?? '未知'})`,
+        value: String(m.modelId),
       };
     });
   }, [upstreamModels, providerMap]);
@@ -75,12 +75,12 @@ function DownstreamModelsPage() {
       cell: ({ row }) => {
         const um = row.original.upstream_model;
         if (!um) return '-';
-        const provider = providerMap[um.provider_id];
+        const provider = providerMap[um.providerId];
         return (
           <div className="flex items-center gap-1">
-            <span>{um.display_name || um.name}</span>
+            <span>{um.displayName || um.name}</span>
             <Badge variant="outline" className="text-xs">
-              {provider?.name ?? '未知'}
+              {provider?.title ?? '未知'}
             </Badge>
           </div>
         );

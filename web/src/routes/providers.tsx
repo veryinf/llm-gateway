@@ -53,15 +53,15 @@ function formatPrice(value: number) {
 
 const columns: ColumnDef<Provider, any>[] = [
   {
-    accessorKey: 'name',
+    accessorKey: 'title',
     header: '名称',
     meta: { label: '名称', className: 'w-[160px]', viewDetail: true },
   },
   {
-    accessorKey: 'base_url',
+    accessorKey: 'baseUrl',
     header: 'Base URL',
     meta: { label: 'Base URL', className: 'w-[240px]' },
-    cell: ({ row }) => <span className="font-mono text-xs">{row.original.base_url}</span>,
+    cell: ({ row }) => <span className="font-mono text-xs">{row.original.baseUrl}</span>,
   },
   {
     accessorKey: 'protocol',
@@ -69,25 +69,25 @@ const columns: ColumnDef<Provider, any>[] = [
     meta: { label: '协议', className: 'w-[120px]' },
     cell: ({ row }) => (
       <div className="flex gap-1 flex-wrap">
-        {row.original.support_openai && <Badge variant="secondary">OpenAI</Badge>}
-        {row.original.support_anthropic && <Badge variant="secondary">Anthropic</Badge>}
+        {row.original.supportOpenai && <Badge variant="secondary">OpenAI</Badge>}
+        {row.original.supportAnthropic && <Badge variant="secondary">Anthropic</Badge>}
       </div>
     ),
   },
   {
-    accessorKey: 'preferred_api',
+    accessorKey: 'preferredApi',
     header: '优先接口',
     meta: { label: '优先接口', className: 'w-[80px]' },
     cell: ({ row }) => (
-      <Badge variant="outline">{row.original.preferred_api === 'openai' ? 'OpenAI' : 'Anthropic'}</Badge>
+      <Badge variant="outline">{row.original.preferredApi === 'openai' ? 'OpenAI' : 'Anthropic'}</Badge>
     ),
   },
   {
-    accessorKey: 'model_count',
+    accessorKey: 'modelCount',
     header: '模型数',
     meta: { label: '模型数', className: 'w-[80px]' },
     cell: ({ row }) => {
-      const count = row.original.model_count ?? 0;
+      const count = row.original.modelCount ?? 0;
       return (
         <Badge variant={count > 0 ? 'default' : 'secondary'}>
           {count}
@@ -96,12 +96,12 @@ const columns: ColumnDef<Provider, any>[] = [
     },
   },
   {
-    accessorKey: 'is_active',
+    accessorKey: 'isActive',
     header: '状态',
     meta: { label: '状态', className: 'w-[70px]' },
     cell: ({ row }) => (
-      <Badge variant={row.original.is_active ? 'default' : 'destructive'}>
-        {row.original.is_active ? '启用' : '禁用'}
+      <Badge variant={row.original.isActive ? 'default' : 'destructive'}>
+        {row.original.isActive ? '启用' : '禁用'}
       </Badge>
     ),
   },
@@ -245,9 +245,9 @@ function AddForm({ form }: { form: any }) {
   const [modelList, setModelList] = useState<EditableModel[]>([]);
 
   const v = useStore(form.store ?? form, (s: any) => s.values ?? s) as any;
-  const supportOpenai = v?.support_openai ?? false;
-  const supportAnthropic = v?.support_anthropic ?? false;
-  const baseUrl = v?.base_url ?? '';
+  const supportOpenai = v?.supportOpenai ?? false;
+  const supportAnthropic = v?.supportAnthropic ?? false;
+  const baseUrl = v?.baseUrl ?? '';
 
   const preferredApiOptions = useMemo(() => {
     const opts: { label: string; value: string }[] = [];
@@ -261,33 +261,33 @@ function AddForm({ form }: { form: any }) {
     form.setFieldValue('models', modelList);
   }, [modelList, form]);
 
-  // Auto-adjust preferred_api when supported protocols change
+  // Auto-adjust preferredApi when supported protocols change
   useEffect(() => {
-    if (preferredApiOptions.length > 0 && !preferredApiOptions.find((o) => o.value === v?.preferred_api)) {
-      form.setFieldValue('preferred_api', preferredApiOptions[0].value);
+    if (preferredApiOptions.length > 0 && !preferredApiOptions.find((o) => o.value === v?.preferredApi)) {
+      form.setFieldValue('preferredApi', preferredApiOptions[0].value);
     }
-  }, [preferredApiOptions, v?.preferred_api, form]);
+  }, [preferredApiOptions, v?.preferredApi, form]);
 
   return (
     <div className="flex flex-col gap-4 max-h-[70vh] overflow-y-auto pr-2">
       <div className="text-sm font-medium text-muted-foreground">基础信息</div>
-      <FormFieldInput form={form} name="name" title="名称" required placeholder="请输入 Provider 名称" />
-      <FormFieldInput form={form} name="base_url" title="BaseURL 根地址" required placeholder="https://api.example.com" />
-      <FormFieldInput form={form} name="api_key" title="API Key" placeholder="sk-..." type="password" />
+      <FormFieldInput form={form} name="title" title="名称" required placeholder="请输入 Provider 名称" />
+      <FormFieldInput form={form} name="baseUrl" title="BaseURL 根地址" required placeholder="https://api.example.com" />
+      <FormFieldInput form={form} name="apiKey" title="API Key" required placeholder="sk-..." type="password" />
 
       <div className="grid grid-cols-4 gap-4">
-        <FormFieldSwitch form={form} name="support_openai" title="支持 OpenAI" switchLabel="支持 OpenAI" />
-        <FormFieldSwitch form={form} name="support_anthropic" title="支持 Anthropic" switchLabel="支持 Anthropic" />
-        <FormFieldSwitch form={form} name="is_active" title="启用" switchLabel="启用" />
+        <FormFieldSwitch form={form} name="supportOpenai" title="支持 OpenAI" switchLabel="支持 OpenAI" />
+        <FormFieldSwitch form={form} name="supportAnthropic" title="支持 Anthropic" switchLabel="支持 Anthropic" />
+        <FormFieldSwitch form={form} name="isActive" title="启用" switchLabel="启用" />
         {preferredApiOptions.length > 0 && (
-          <FormFieldSelect form={form} name="preferred_api" title="优先接口" options={preferredApiOptions} />
+          <FormFieldSelect form={form} name="preferredApi" title="优先接口" options={preferredApiOptions} />
         )}
       </div>
 
       {supportOpenai && (
         <FormFieldInput
           form={form}
-          name="openai_base_url"
+          name="openaiBaseUrl"
           title="OpenAI BaseURL"
           placeholder={baseUrl ? `${baseUrl}/v1` : 'https://api.example.com/v1'}
         />
@@ -296,7 +296,7 @@ function AddForm({ form }: { form: any }) {
       {supportAnthropic && (
         <FormFieldInput
           form={form}
-          name="anthropic_base_url"
+          name="anthropicBaseUrl"
           title="Anthropic BaseURL"
           placeholder={baseUrl ? `${baseUrl}/anthropic/v1` : 'https://api.example.com/anthropic/v1'}
         />
@@ -305,9 +305,9 @@ function AddForm({ form }: { form: any }) {
       <ModelFieldList
         modelList={modelList}
         setModelList={setModelList}
-        preferredApi={v?.preferred_api || 'openai'}
+        preferredApi={v?.preferredApi || 'openai'}
         baseUrl={baseUrl}
-        apiKey={v?.api_key || ''}
+        apiKey={v?.apiKey || ''}
       />
     </div>
   );
@@ -316,13 +316,13 @@ function AddForm({ form }: { form: any }) {
 // ---------- EditForm ----------
 
 function EditForm({ form, entity }: { form: any; entity: Provider }) {
-  const pid = entity.id;
+  const pid = entity.providerId;
   const [modelList, setModelList] = useState<EditableModel[]>([]);
 
   const v = useStore(form.store ?? form, (s: any) => s.values ?? s) as any;
-  const supportOpenai = v?.support_openai ?? false;
-  const supportAnthropic = v?.support_anthropic ?? false;
-  const baseUrl = v?.base_url ?? '';
+  const supportOpenai = v?.supportOpenai ?? false;
+  const supportAnthropic = v?.supportAnthropic ?? false;
+  const baseUrl = v?.baseUrl ?? '';
 
   const preferredApiOptions = useMemo(() => {
     const opts: { label: string; value: string }[] = [];
@@ -335,14 +335,16 @@ function EditForm({ form, entity }: { form: any; entity: Provider }) {
   useQuery({
     queryKey: ['provider-models', pid],
     queryFn: async () => {
-      const res = await request.get<API.DataSet<Model>>(`/admin/models?provider_id=${pid}`);
+      const res = await request.post<API.DataSet<Model>>('/provider-models/search', {
+        filters: [{ field: 'providerId', value: pid }],
+      });
       const models = (res.data.dataSet ?? []) as Model[];
       setModelList(
         models.map((m) => ({
-          id: m.id,
+          id: m.modelId,
           name: m.name,
-          api_type: m.api_type || 'openai',
-          is_chat: m.is_chat ?? true,
+          api_type: m.apiType || 'openai',
+          is_chat: true,
         })),
       );
       return models;
@@ -354,33 +356,33 @@ function EditForm({ form, entity }: { form: any; entity: Provider }) {
     form.setFieldValue('models', modelList);
   }, [modelList, form]);
 
-  // Auto-adjust preferred_api when supported protocols change
+  // Auto-adjust preferredApi when supported protocols change
   useEffect(() => {
-    if (preferredApiOptions.length > 0 && !preferredApiOptions.find((o) => o.value === v?.preferred_api)) {
-      form.setFieldValue('preferred_api', preferredApiOptions[0].value);
+    if (preferredApiOptions.length > 0 && !preferredApiOptions.find((o) => o.value === v?.preferredApi)) {
+      form.setFieldValue('preferredApi', preferredApiOptions[0].value);
     }
-  }, [preferredApiOptions, v?.preferred_api, form]);
+  }, [preferredApiOptions, v?.preferredApi, form]);
 
   return (
     <div className="flex flex-col gap-4 max-h-[70vh] overflow-y-auto pr-2">
       <div className="text-sm font-medium text-muted-foreground">基础信息</div>
-      <FormFieldInput form={form} name="name" title="名称" required />
-      <FormFieldInput form={form} name="base_url" title="Base URL" required placeholder="https://api.example.com" />
-      <FormFieldInput form={form} name="api_key" title="API Key" placeholder="留空不修改" type="password" />
+      <FormFieldInput form={form} name="title" title="名称" required />
+      <FormFieldInput form={form} name="baseUrl" title="Base URL" required placeholder="https://api.example.com" />
+      <FormFieldInput form={form} name="apiKey" title="API Key" placeholder="留空不修改" type="password" />
 
       <div className="grid grid-cols-4 gap-4">
-        <FormFieldSwitch form={form} name="support_openai" title="支持 OpenAI" switchLabel="支持 OpenAI" />
-        <FormFieldSwitch form={form} name="support_anthropic" title="支持 Anthropic" switchLabel="支持 Anthropic" />
-        <FormFieldSwitch form={form} name="is_active" title="启用" switchLabel="启用" />
+        <FormFieldSwitch form={form} name="supportOpenai" title="支持 OpenAI" switchLabel="支持 OpenAI" />
+        <FormFieldSwitch form={form} name="supportAnthropic" title="支持 Anthropic" switchLabel="支持 Anthropic" />
+        <FormFieldSwitch form={form} name="isActive" title="启用" switchLabel="启用" />
         {preferredApiOptions.length > 0 && (
-          <FormFieldSelect form={form} name="preferred_api" title="优先接口" options={preferredApiOptions} />
+          <FormFieldSelect form={form} name="preferredApi" title="优先接口" options={preferredApiOptions} />
         )}
       </div>
 
       {supportOpenai && (
         <FormFieldInput
           form={form}
-          name="openai_base_url"
+          name="openaiBaseUrl"
           title="OpenAI BaseURL"
           placeholder={baseUrl ? `${baseUrl}/v1` : 'https://api.example.com/v1'}
         />
@@ -389,7 +391,7 @@ function EditForm({ form, entity }: { form: any; entity: Provider }) {
       {supportAnthropic && (
         <FormFieldInput
           form={form}
-          name="anthropic_base_url"
+          name="anthropicBaseUrl"
           title="Anthropic BaseURL"
           placeholder={baseUrl ? `${baseUrl}/anthropic/v1` : 'https://api.example.com/anthropic/v1'}
         />
@@ -398,9 +400,9 @@ function EditForm({ form, entity }: { form: any; entity: Provider }) {
       <ModelFieldList
         modelList={modelList}
         setModelList={setModelList}
-        preferredApi={v?.preferred_api || 'openai'}
+        preferredApi={v?.preferredApi || 'openai'}
         baseUrl={baseUrl}
-        apiKey={v?.api_key || ''}
+        apiKey={v?.apiKey || ''}
       />
     </div>
   );
@@ -423,20 +425,32 @@ function ProvidersPage() {
       options={{ showSelectColumn: false }}
       renderViewDetail={(entity) => <ProviderDetail entity={entity} />}
       formInitialValue={(_type, entity) => ({
-        id: 0,
-        name: entity?.name ?? '',
-        base_url: entity?.base_url ?? '',
-        api_key: '',
-        support_openai: entity?.support_openai ?? true,
-        openai_base_url: entity?.openai_base_url ?? '',
-        support_anthropic: entity?.support_anthropic ?? true,
-        anthropic_base_url: entity?.anthropic_base_url ?? '',
-        preferred_api: entity?.preferred_api ?? 'openai',
-        is_active: entity?.is_active ?? true,
+        providerId: entity?.providerId ?? 0,
+        title: entity?.title ?? '',
+        baseUrl: entity?.baseUrl ?? '',
+        apiKey: '',
+        supportOpenai: entity?.supportOpenai ?? true,
+        openaiBaseUrl: entity?.openaiBaseUrl ?? '',
+        supportAnthropic: entity?.supportAnthropic ?? true,
+        anthropicBaseUrl: entity?.anthropicBaseUrl ?? '',
+        preferredApi: entity?.preferredApi ?? 'openai',
+        isActive: entity?.isActive ?? true,
         models: [],
-        created_at: '',
-        updated_at: '',
       })}
+      formAddValidator={(entity) => {
+        if (!entity.supportOpenai && !entity.supportAnthropic) {
+          toast.error('请至少支持一种协议（OpenAI 或 Anthropic）');
+          return false;
+        }
+        return true;
+      }}
+      formUpdateValidator={(entity) => {
+        if (!entity.supportOpenai && !entity.supportAnthropic) {
+          toast.error('请至少支持一种协议（OpenAI 或 Anthropic）');
+          return false;
+        }
+        return true;
+      }}
       renderViewAdd={(form) => <AddForm form={form} />}
       renderViewUpdate={(form, entity) => <EditForm form={form} entity={entity} />}
     />
@@ -446,7 +460,7 @@ function ProvidersPage() {
 // ---------- ProviderDetail ----------
 
 function ProviderDetail({ entity }: { entity: Provider }) {
-  const pid = entity.id;
+  const pid = entity.providerId;
   const queryClient = useQueryClient();
   const { Modal, modalHandler } = useModal();
   const { Confirm, confirmHandler } = useConfirm();
@@ -488,9 +502,9 @@ function ProviderDetail({ entity }: { entity: Provider }) {
   const saveModelMutation = useMutation({
     mutationFn: async (params: any) => {
       if (editingModel) {
-        await modelService.update(editingModel.id, params);
+        await modelService.update(editingModel.modelId, params);
       } else {
-        await modelService.add({ ...params, provider_id: pid });
+        await modelService.add({ ...params, providerId: pid });
       }
     },
     onSuccess: () => {
@@ -521,7 +535,7 @@ function ProviderDetail({ entity }: { entity: Provider }) {
     setSelectedModels(new Set());
     fetchModalHandler.open('获取上游模型');
     try {
-      const models = await fetchProviderModels(entity.base_url, entity.api_key || '', entity.preferred_api);
+      const models = await fetchProviderModels(entity.baseUrl, entity.apiKey || '', entity.preferredApi);
       setFetchedModels(models);
       // Auto-select all models that don't already exist
       const existingNames = new Set(models.map((m: any) => m.name));
@@ -578,14 +592,14 @@ function ProviderDetail({ entity }: { entity: Provider }) {
   function openEditModel(m: Model) {
     setEditingModel(m);
     setFormName(m.name);
-    setFormDisplayName(m.display_name);
-    setFormApiType(m.api_type || 'openai');
-    setFormMaxContext(m.max_context_tokens ? String(m.max_context_tokens) : '');
-    setFormMaxOutput(m.max_output_tokens ? String(m.max_output_tokens) : '');
-    setFormInputPrice(m.input_price ? String(m.input_price) : '');
-    setFormOutputPrice(m.output_price ? String(m.output_price) : '');
+    setFormDisplayName(m.displayName);
+    setFormApiType(m.apiType || 'openai');
+    setFormMaxContext(m.maxContextTokens ? String(m.maxContextTokens) : '');
+    setFormMaxOutput(m.maxOutputTokens ? String(m.maxOutputTokens) : '');
+    setFormInputPrice(m.inputPrice ? String(m.inputPrice) : '');
+    setFormOutputPrice(m.outputPrice ? String(m.outputPrice) : '');
     setFormDescription(m.description);
-    setFormIsActive(m.is_active);
+    setFormIsActive(m.isActive);
     modalHandler.open(`编辑模型 - ${m.name}`);
   }
 
@@ -596,15 +610,15 @@ function ProviderDetail({ entity }: { entity: Provider }) {
     }
     saveModelMutation.mutate({
       name: formName,
-      display_name: formDisplayName,
-      api_type: formApiType,
-      max_context_tokens: Number(formMaxContext) || 0,
-      max_output_tokens: Number(formMaxOutput) || 0,
-      input_price: Number(formInputPrice) || 0,
-      output_price: Number(formOutputPrice) || 0,
+      displayName: formDisplayName,
+      apiType: formApiType,
+      maxContextTokens: Number(formMaxContext) || 0,
+      maxOutputTokens: Number(formMaxOutput) || 0,
+      inputPrice: Number(formInputPrice) || 0,
+      outputPrice: Number(formOutputPrice) || 0,
       description: formDescription,
-      is_active: formIsActive,
-      is_chat: true,
+      isActive: formIsActive,
+      isChat: true,
     });
   }
 
@@ -616,23 +630,23 @@ function ProviderDetail({ entity }: { entity: Provider }) {
         </CardHeader>
         <CardContent>
           <div className="grid gap-2 md:grid-cols-2">
-            <InfoRow label="名称" value={entity.name} />
-            <InfoRow label="Base URL" value={<span className="font-mono text-xs">{entity.base_url}</span>} />
+            <InfoRow label="名称" value={entity.title} />
+            <InfoRow label="Base URL" value={<span className="font-mono text-xs">{entity.baseUrl}</span>} />
             <InfoRow
               label="协议"
               value={
                 <div className="flex gap-1">
-                  {entity.support_openai && <Badge variant="secondary">OpenAI</Badge>}
-                  {entity.support_anthropic && <Badge variant="secondary">Anthropic</Badge>}
+                  {entity.supportOpenai && <Badge variant="secondary">OpenAI</Badge>}
+                  {entity.supportAnthropic && <Badge variant="secondary">Anthropic</Badge>}
                 </div>
               }
             />
-            <InfoRow label="优先接口" value={<Badge variant="outline">{entity.preferred_api === 'openai' ? 'OpenAI' : 'Anthropic'}</Badge>} />
+            <InfoRow label="优先接口" value={<Badge variant="outline">{entity.preferredApi === 'openai' ? 'OpenAI' : 'Anthropic'}</Badge>} />
             <InfoRow
               label="状态"
               value={
-                <Badge variant={entity.is_active ? 'default' : 'destructive'}>
-                  {entity.is_active ? '启用' : '禁用'}
+                <Badge variant={entity.isActive ? 'default' : 'destructive'}>
+                  {entity.isActive ? '启用' : '禁用'}
                 </Badge>
               }
             />
@@ -681,21 +695,21 @@ function ProviderDetail({ entity }: { entity: Provider }) {
                   </TableRow>
                 ) : (
                   models.map((m) => (
-                    <TableRow key={m.id}>
+                    <TableRow key={m.modelId}>
                       <TableCell className="font-mono text-xs">{m.name}</TableCell>
-                      <TableCell>{m.display_name || '-'}</TableCell>
+                      <TableCell>{m.displayName || '-'}</TableCell>
                       <TableCell>
-                        <Badge variant="secondary">{m.api_type === 'openai' ? 'OpenAI' : 'Anthropic'}</Badge>
+                        <Badge variant="secondary">{m.apiType === 'openai' ? 'OpenAI' : 'Anthropic'}</Badge>
                       </TableCell>
-                      <TableCell>{formatTokens(m.max_context_tokens)}</TableCell>
-                      <TableCell>{formatTokens(m.max_output_tokens)}</TableCell>
+                      <TableCell>{formatTokens(m.maxContextTokens)}</TableCell>
+                      <TableCell>{formatTokens(m.maxOutputTokens)}</TableCell>
                       <TableCell>{m.tpm ? formatTokens(m.tpm) : '-'}</TableCell>
                       <TableCell>{m.qpm || '-'}</TableCell>
-                      <TableCell>{formatPrice(m.input_price)}</TableCell>
-                      <TableCell>{formatPrice(m.output_price)}</TableCell>
+                      <TableCell>{formatPrice(m.inputPrice)}</TableCell>
+                      <TableCell>{formatPrice(m.outputPrice)}</TableCell>
                       <TableCell>
-                        <Badge variant={m.is_active ? 'default' : 'destructive'}>
-                          {m.is_active ? '启用' : '禁用'}
+                        <Badge variant={m.isActive ? 'default' : 'destructive'}>
+                          {m.isActive ? '启用' : '禁用'}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -711,7 +725,7 @@ function ProviderDetail({ entity }: { entity: Provider }) {
                               confirmHandler.confirmInvoke(
                                 '确认删除',
                                 async () => {
-                                  await deleteModelMutation.mutateAsync(m.id);
+                                  await deleteModelMutation.mutateAsync(m.modelId);
                                   return true;
                                 },
                                 `确认要删除模型「${m.name}」吗？`,

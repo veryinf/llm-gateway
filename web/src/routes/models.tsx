@@ -49,8 +49,8 @@ function ModelsPage() {
   });
 
   const providerOptions = (providers?.dataSet ?? []).map((p: Provider) => ({
-    label: p.name,
-    value: String(p.id),
+    label: p.title,
+    value: String(p.providerId),
   }));
 
   // Dynamic page name to force queryKey change when filter changes
@@ -61,9 +61,15 @@ function ModelsPage() {
   const filteredService = useMemo<API.Service<Model>>(
     () => ({
       ...modelService,
-      async search(_params) {
-        const query = providerFilter !== 'all' ? `?provider_id=${providerFilter}` : '';
-        const res = await request.get<API.DataSet<Model>>(`/admin/models${query}`);
+      async search(params) {
+        const filters = [...(params.filters ?? [])];
+        if (providerFilter !== 'all') {
+          filters.push({ field: 'providerId', value: Number(providerFilter) });
+        }
+        const res = await request.post<API.DataSet<Model>>('/provider-models/search', {
+          ...params,
+          filters,
+        });
         return res.data;
       },
     }),
@@ -85,28 +91,28 @@ function ModelsPage() {
       meta: { label: '模型名称', className: 'w-[180px]', viewDetail: true },
     },
     {
-      accessorKey: 'display_name',
+      accessorKey: 'displayName',
       header: '展示名',
       meta: { label: '展示名', className: 'w-[140px]' },
-      cell: ({ row }) => row.original.display_name || '-',
+      cell: ({ row }) => row.original.displayName || '-',
     },
     {
       accessorKey: 'provider',
       header: 'Provider',
       meta: { label: 'Provider', className: 'w-[140px]' },
-      cell: ({ row }) => row.original.provider?.name ?? '-',
+      cell: ({ row }) => row.original.provider?.title ?? '-',
     },
     {
-      accessorKey: 'max_context_tokens',
+      accessorKey: 'maxContextTokens',
       header: '上下文',
       meta: { label: '上下文', className: 'w-[90px]' },
-      cell: ({ row }) => formatTokens(row.original.max_context_tokens),
+      cell: ({ row }) => formatTokens(row.original.maxContextTokens),
     },
     {
-      accessorKey: 'max_output_tokens',
+      accessorKey: 'maxOutputTokens',
       header: '最大输出',
       meta: { label: '最大输出', className: 'w-[90px]' },
-      cell: ({ row }) => formatTokens(row.original.max_output_tokens),
+      cell: ({ row }) => formatTokens(row.original.maxOutputTokens),
     },
     {
       accessorKey: 'tpm',
@@ -121,86 +127,57 @@ function ModelsPage() {
       cell: ({ row }) => (row.original.qpm ? String(row.original.qpm) : '-'),
     },
     {
-      accessorKey: 'input_price',
+      accessorKey: 'inputPrice',
       header: '输入单价',
       meta: { label: '输入单价', className: 'w-[90px]' },
-      cell: ({ row }) => formatPrice(row.original.input_price),
+      cell: ({ row }) => formatPrice(row.original.inputPrice),
     },
     {
-      accessorKey: 'output_price',
+      accessorKey: 'outputPrice',
       header: '输出单价',
       meta: { label: '输出单价', className: 'w-[90px]' },
-      cell: ({ row }) => formatPrice(row.original.output_price),
+      cell: ({ row }) => formatPrice(row.original.outputPrice),
     },
     {
-      accessorKey: 'capabilities',
-      header: '能力',
-      meta: { label: '能力', className: 'w-[180px]' },
-      cell: ({ row }) => {
-        const caps: string[] = [];
-        if (row.original.is_chat) caps.push('聊天');
-        if (row.original.is_completion) caps.push('补全');
-        if (row.original.is_vision) caps.push('视觉');
-        if (row.original.is_embedding) caps.push('嵌入');
-        return (
-          <div className="flex flex-wrap gap-1">
-            {caps.length > 0
-              ? caps.map((c) => (
-                  <Badge key={c} variant="secondary" className="text-xs">
-                    {c}
-                  </Badge>
-                ))
-              : '-'}
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: 'is_active',
+      accessorKey: 'isActive',
       header: '状态',
       meta: { label: '状态', className: 'w-[70px]' },
       cell: ({ row }) => (
-        <Badge variant={row.original.is_active ? 'default' : 'destructive'}>
-          {row.original.is_active ? '启用' : '禁用'}
+        <Badge variant={row.original.isActive ? 'default' : 'destructive'}>
+          {row.original.isActive ? '启用' : '禁用'}
         </Badge>
       ),
     },
   ];
 
   const formInitialValue = (_type: string, entity?: Model) => ({
-    id: 0,
-    provider_id: entity?.provider_id ?? 0,
+    modelId: entity?.modelId ?? 0,
+    providerId: entity?.providerId ?? 0,
     name: entity?.name ?? '',
-    api_type: entity?.api_type ?? 'openai',
-    display_name: entity?.display_name ?? '',
+    apiType: entity?.apiType ?? 'openai',
+    displayName: entity?.displayName ?? '',
     description: entity?.description ?? '',
-    max_context_tokens: entity?.max_context_tokens ?? 0,
-    max_output_tokens: entity?.max_output_tokens ?? 0,
-    input_price: entity?.input_price ?? 0,
-    output_price: entity?.output_price ?? 0,
+    maxContextTokens: entity?.maxContextTokens ?? 0,
+    maxOutputTokens: entity?.maxOutputTokens ?? 0,
+    inputPrice: entity?.inputPrice ?? 0,
+    outputPrice: entity?.outputPrice ?? 0,
     tpm: entity?.tpm ?? 0,
     qpm: entity?.qpm ?? 0,
-    is_chat: entity?.is_chat ?? true,
-    is_completion: entity?.is_completion ?? false,
-    is_vision: entity?.is_vision ?? false,
-    is_embedding: entity?.is_embedding ?? false,
-    is_active: entity?.is_active ?? true,
-    created_at: '',
-    updated_at: '',
+    isActive: entity?.isActive ?? true,
   });
 
   const renderForm = (form: any, _entity?: Model) => (
     <div className="flex flex-col gap-4 max-h-[70vh] overflow-y-auto pr-2">
       <div className="text-sm font-medium text-muted-foreground">基础信息</div>
       <FormFieldInput form={form} name="name" title="模型名称" required placeholder="例如: gpt-4o, claude-3-opus" />
-      <FormFieldInput form={form} name="display_name" title="展示名" placeholder="用户友好的显示名称" />
-      <FormFieldSelect form={form} name="provider_id" title="Provider" options={providerOptions} required />
+      <FormFieldInput form={form} name="displayName" title="展示名" placeholder="用户友好的显示名称" />
+      <FormFieldSelect form={form} name="providerId" title="Provider" options={providerOptions} required />
       <FormFieldTextarea form={form} name="description" title="描述" placeholder="模型描述信息" rows={2} />
 
       <div className="text-sm font-medium text-muted-foreground border-t pt-4">容量与限制</div>
       <div className="grid grid-cols-2 gap-4">
-        <FormFieldInput form={form} name="max_context_tokens" title="最大上下文 (tokens)" type="number" placeholder="128000" />
-        <FormFieldInput form={form} name="max_output_tokens" title="最大输出 (tokens)" type="number" placeholder="4096" />
+        <FormFieldInput form={form} name="maxContextTokens" title="最大上下文 (tokens)" type="number" placeholder="128000" />
+        <FormFieldInput form={form} name="maxOutputTokens" title="最大输出 (tokens)" type="number" placeholder="4096" />
       </div>
 
       <div className="text-sm font-medium text-muted-foreground border-t pt-4">速率限制</div>
@@ -211,19 +188,11 @@ function ModelsPage() {
 
       <div className="text-sm font-medium text-muted-foreground border-t pt-4">定价 (per 1M tokens)</div>
       <div className="grid grid-cols-2 gap-4">
-        <FormFieldInput form={form} name="input_price" title="输入单价 ($)" type="number" placeholder="0.00" />
-        <FormFieldInput form={form} name="output_price" title="输出单价 ($)" type="number" placeholder="0.00" />
+        <FormFieldInput form={form} name="inputPrice" title="输入单价 ($)" type="number" placeholder="0.00" />
+        <FormFieldInput form={form} name="outputPrice" title="输出单价 ($)" type="number" placeholder="0.00" />
       </div>
 
-      <div className="text-sm font-medium text-muted-foreground border-t pt-4">能力标记</div>
-      <div className="grid grid-cols-2 gap-4">
-        <FormFieldSwitch form={form} name="is_chat" title="聊天补全" switchLabel="支持 Chat Completions" />
-        <FormFieldSwitch form={form} name="is_completion" title="文本补全" switchLabel="支持 Text Completions" />
-        <FormFieldSwitch form={form} name="is_vision" title="视觉输入" switchLabel="支持图像输入" />
-        <FormFieldSwitch form={form} name="is_embedding" title="嵌入" switchLabel="支持 Embeddings" />
-      </div>
-
-      <FormFieldSwitch form={form} name="is_active" title="启用" switchLabel="启用此模型路由" />
+      <FormFieldSwitch form={form} name="isActive" title="启用" switchLabel="启用此模型路由" />
     </div>
   );
 

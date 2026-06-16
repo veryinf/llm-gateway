@@ -6,6 +6,8 @@ import (
 	"io/fs"
 	llmgateway "llm-gateway"
 	"llm-gateway/internal/core"
+	"llm-gateway/internal/provider"
+	"llm-gateway/internal/router"
 	"llm-gateway/internal/service"
 	"llm-gateway/internal/web/common"
 	"llm-gateway/internal/web/handlers"
@@ -74,6 +76,12 @@ func InitHttpServer(db *gorm.DB, store *sql.DB, cfg *core.Config) *echo.Echo {
 
 	base := common.BaseHandler{DB: db, Store: store, TokenManager: tokenManager, Config: cfg}
 
+	// 初始化 Provider 相关服务
+	registry := provider.NewRegistry()
+	modelRouter := router.NewModelRouter(registry)
+	providerSvc := service.NewProviderService(db, registry, modelRouter)
+	_ = providerSvc.LoadProvidersFromDB()
+
 	// 公共接口
 	bizApi := e.Group(apiBizPrefix)
 	bizApi.Use(common.LeMiddleware(common.LeMiddlewareConfig{
@@ -87,15 +95,17 @@ func InitHttpServer(db *gorm.DB, store *sql.DB, cfg *core.Config) *echo.Echo {
 	(&handlers.ConfigHandler{BaseHandler: base}).RegisterRoutes(bizApi)
 	(&handlers.UserHandler{BaseHandler: base}).RegisterRoutes(bizApi)
 	(&handlers.ApikeyHandler{BaseHandler: base}).RegisterRoutes(bizApi)
+	(&handlers.ProviderHandler{BaseHandler: base, ProviderSvc: providerSvc}).RegisterRoutes(bizApi)
+	(&handlers.ProviderModelHandler{BaseHandler: base, ProviderSvc: providerSvc}).RegisterRoutes(bizApi)
 	// Health check
 	(&handlers.HealthHandler{BaseHandler: base}).RegisterRoutes(bizApi)
 
 	// LLM Gateway API — uses ProxyMiddleware (sk- API Key)
 	v1 := e.Group("/v1")
 	v1.Use(common.ProxyMiddleware())
-	(&handlers.GatewayHandler{BaseHandler: base}).RegisterRoutes(v1)
+	(&handlers.GatewayHandler{BaseHandler: base, ModelRouter: modelRouter}).RegisterRoutes(v1)
 	anthropic := e.Group("/anthropic")
 	anthropic.Use(common.ProxyMiddleware())
-	(&handlers.GatewayHandler{BaseHandler: base}).RegisterRoutes(anthropic)
+	(&handlers.GatewayHandler{BaseHandler: base, ModelRouter: modelRouter}).RegisterRoutes(anthropic)
 	return e
 }

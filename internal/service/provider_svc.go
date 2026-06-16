@@ -34,11 +34,11 @@ type adapterEntry struct {
 // and builds downstream model routing mappings.
 func (s *ProviderService) LoadProvidersFromDB() error {
 	var providers []model.Provider
-	if err := s.db.Where("is_active = ?", true).Order("id ASC").Find(&providers).Error; err != nil {
+	if err := s.db.Where("is_active = ?", true).Order("provider_id ASC").Find(&providers).Error; err != nil {
 		return fmt.Errorf("list active providers: %w", err)
 	}
 
-	// adapterID -> provider_name mapping for routing
+	// adapterID -> provider_title mapping for routing
 	adapterToProvider := make(map[string]string)
 
 	for _, p := range providers {
@@ -48,14 +48,14 @@ func (s *ProviderService) LoadProvidersFromDB() error {
 				slog.Warn("skip adapter", "id", e.id, "error", err)
 				continue
 			}
-			adapterToProvider[e.id] = p.Name
+			adapterToProvider[e.id] = p.Title
 		}
 	}
 
 	// Build downstream model routing: downstream_name -> adapterID
 	providerModels := make(map[string][]string)
 
-	var upstreamModels []model.Model
+	var upstreamModels []model.ProviderModel
 	if err := s.db.Where("is_active = ?", true).Find(&upstreamModels).Error; err != nil {
 		slog.Warn("list upstream models", "error", err)
 	}
@@ -64,9 +64,9 @@ func (s *ProviderService) LoadProvidersFromDB() error {
 	upstreamToAdapter := make(map[uint]string, len(upstreamModels))
 	for _, m := range upstreamModels {
 		for _, p := range providers {
-			if p.ID == m.ProviderID {
-				adapterID := fmt.Sprintf("%s#%s", p.Name, m.APIType)
-				upstreamToAdapter[m.ID] = adapterID
+			if p.ProviderID == m.ProviderID {
+				adapterID := fmt.Sprintf("%s#%s", p.Title, m.APIType)
+				upstreamToAdapter[m.ModelID] = adapterID
 				break
 			}
 		}
@@ -108,9 +108,9 @@ func (s *ProviderService) createAdapters(p model.Provider) []adapterEntry {
 		if url == "" {
 			url = p.BaseURL + "/v1"
 		}
-		adapter := provider.NewOpenAICompatibleProvider(p.Name, url, p.APIKey)
+		adapter := provider.NewOpenAICompatibleProvider(p.Title, url, p.APIKey)
 		entries = append(entries, adapterEntry{
-			id:      fmt.Sprintf("%s#%s", p.Name, model.APITypeOpenAI),
+			id:      fmt.Sprintf("%s#%s", p.Title, model.APITypeOpenAI),
 			adapter: adapter,
 		})
 	}
@@ -120,15 +120,15 @@ func (s *ProviderService) createAdapters(p model.Provider) []adapterEntry {
 		if url == "" {
 			url = p.BaseURL + "/anthropic/v1"
 		}
-		adapter := provider.NewAnthropicProvider(p.Name, url, p.APIKey)
+		adapter := provider.NewAnthropicProvider(p.Title, url, p.APIKey)
 		entries = append(entries, adapterEntry{
-			id:      fmt.Sprintf("%s#%s", p.Name, model.APITypeAnthropic),
+			id:      fmt.Sprintf("%s#%s", p.Title, model.APITypeAnthropic),
 			adapter: adapter,
 		})
 	}
 
 	if len(entries) == 0 {
-		slog.Warn("provider has no supported API types", "name", p.Name)
+		slog.Warn("provider has no supported API types", "title", p.Title)
 	}
 
 	return entries

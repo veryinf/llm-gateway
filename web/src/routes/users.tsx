@@ -1,8 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { useQuery } from '@tanstack/react-query';
-import { Copy, Check } from 'lucide-react';
 import { Page, type PageInformation } from '@/components/full-page';
 import { Descriptions } from '@/components/descriptions';
 import { FormFieldInput, FormFieldSelect } from '@/components/form';
@@ -15,6 +14,7 @@ import { EasyTooltip } from '@/components/easy-tooltip';
 import { userService, type User } from '@/services/user';
 import { apiKeyService } from '@/services/api-key';
 import { useBreadcrumb } from '@/hooks/use-breadcrumb';
+import { CopyButton } from '@/components/easy-button';
 
 export const Route = createFileRoute('/users')({
   component: UsersPage,
@@ -163,22 +163,6 @@ function UsersPage() {
         </div>
       )}
     />
-  );
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={handleCopy}>
-      {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-    </Button>
   );
 }
 

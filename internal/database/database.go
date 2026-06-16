@@ -49,7 +49,7 @@ func InitDB(dataDir string) (*gorm.DB, *sql.DB) {
 		&model.Config{},
 		&model.APIKey{},
 		&model.Provider{},
-		&model.Model{},
+		&model.ProviderModel{},
 		&model.DownstreamModel{},
 		&model.User{},
 	); err != nil {

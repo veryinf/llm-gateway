@@ -3,56 +3,48 @@ import type { API } from '@/typings';
 import type { Provider } from './provider';
 
 export interface Model {
-  id: number;
-  provider_id: number;
+  modelId: number;
+  providerId: number;
   name: string;
-  api_type: 'openai' | 'anthropic';
-  display_name: string;
+  apiType: 'openai' | 'anthropic';
+  displayName: string;
   description: string;
-  max_context_tokens: number;
-  max_output_tokens: number;
-  input_price: number;
-  output_price: number;
+  maxContextTokens: number;
+  maxOutputTokens: number;
+  inputPrice: number;
+  outputPrice: number;
   tpm: number;
   qpm: number;
-  is_chat: boolean;
-  is_completion: boolean;
-  is_vision: boolean;
-  is_embedding: boolean;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
+  isActive: boolean;
   provider?: Provider;
 }
 
 export const modelService: API.Service<Model> = {
-  primaryKey: (entity) => entity.id,
-  title: (entity) => entity.display_name || entity.name,
+  primaryKey: (entity) => entity.modelId,
+  title: (entity) => entity.displayName || entity.name,
 
-  async search(_params) {
-    const res = await request.get<API.DataSet<Model>>('/admin/models');
+  async search(params) {
+    const res = await request.post<API.DataSet<Model>>('/provider-models/search', params);
     return res.data;
   },
 
-  async fetch(id) {
-    const res = await request.get<API.Data<Model>>('/admin/models');
-    const list = (res.data.data as unknown as Model[]) ?? [];
-    const model = list.find((m) => m.id === id);
-    return { errCode: 0, errMsg: 'ok', data: model };
+  async fetch(modelId) {
+    const res = await request.post<API.Data<Model>>('/provider-models/fetch', { modelId });
+    return res.data;
   },
 
   async add(params) {
-    await request.post('/admin/models', params);
-    return { errCode: 0, errMsg: 'ok' };
+    const res = await request.post<API.ResponseStruct>('/provider-models/add', params);
+    return res.data;
   },
 
-  async update(id, params) {
-    await request.put(`/admin/models/${id}`, params);
-    return { errCode: 0, errMsg: 'ok' };
+  async update(modelId, params) {
+    const res = await request.post('/provider-models/update', { modelId, ...params });
+    return res.data;
   },
 
-  async delete(id) {
-    await request.delete(`/admin/models/${id}`);
-    return { errCode: 0, errMsg: 'ok' };
+  async delete(modelId) {
+    const res = await request.post('/provider-models/remove', { modelId });
+    return res.data;
   },
 };

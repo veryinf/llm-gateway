@@ -25,7 +25,7 @@ const menuSet = {
   dashboard: [{ title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard }],
   upstream: [
     { title: 'LLM 服务商', url: '/providers', icon: Server },
-    { title: '服务商模型', url: '/upstream-models', icon: Blocks },
+    { title: '服务商模型', url: '/provider-models', icon: Blocks },
   ],
   downstream: [
     { title: '用户管理', url: '/users', icon: Users },

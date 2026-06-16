@@ -2,8 +2,8 @@ import type { ReactNode } from 'react';
 import { toast } from 'sonner';
 import type { API } from '@/typings';
 
-export type OptionsItem = { label: string | React.ReactNode; value: string; text?: string };
-export type GroupOptionsItem = { label: string | React.ReactNode; options: OptionsItem[] };
+export type OptionsItem = { label: string | React.ReactNode; value: string | number; text?: string; };
+export type GroupOptionsItem = { label: string | React.ReactNode; options: OptionsItem[]; };
 
 export namespace UI {
   export async function tips(task: Promise<API.ResponseStruct>, msg: string = '操作成功'): Promise<boolean> {

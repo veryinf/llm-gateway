@@ -1,5 +1,6 @@
 import '@tanstack/react-table';
 import type { OptionsItem } from './lib';
+import type { UseQueryResult } from '@tanstack/react-query';
 
 declare namespace API {
   type PrimaryKeyType = number;

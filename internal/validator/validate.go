@@ -1,39 +1,65 @@
-package validator
+﻿package validator
 
 import (
-	"fmt"
+	"errors"
+	"log/slog"
 
-	validation "github.com/go-ozzo/ozzo-validation/v4"
+	"github.com/go-ozzo/ozzo-validation/v4"
+	"github.com/samber/lo"
 )
 
-var translations = map[string]string{
-	"required":    "此字段为必填项",
-	"is_in_invalid": "值不在允许的范围内",
-	"is_json":     "必须是有效的 JSON",
+type translationEntry struct {
+	defaultMessage string
+	message        string
 }
 
-// ValidationTranslate 将 ozzo-validation 错误翻译为中文
+var translations = map[string][]translationEntry{
+	"validation_required": {
+		{"cannot be blank", "不能为空"},
+	},
+	"validation_in_invalid": {
+		{"must be a valid value", "必须是有效值"},
+	},
+	"validation_is_json": {
+		{"must be in valid JSON format", "必须是有效的json格式"},
+	},
+}
+
 func ValidationTranslate(err error) error {
-	if err == nil {
-		return nil
-	}
-
-	if validationErrors, ok := err.(validation.Errors); ok {
-		var msg string
-		for field, fieldErr := range validationErrors {
-			errMsg := fieldErr.Error()
-			if translated, exists := translations[errMsg]; exists {
-				errMsg = translated
+	var vErrors validation.Errors
+	if errors.As(err, &vErrors) {
+		for key, vErr := range vErrors {
+			var vError validation.ErrorObject
+			if errors.As(vErr, &vError) {
+				translationEntries, ok := translations[vError.Code()]
+				if ok {
+					tEntry, find := lo.Find(translationEntries, func(entry translationEntry) bool { return entry.defaultMessage == vError.Error() })
+					if find {
+						vErrors[key] = validation.NewError(vError.Code(), tEntry.message)
+					} else {
+						slog.Warn("no translation for code: " + vError.Code() + " message: " + vError.Error())
+					}
+				} else {
+					slog.Warn("no translation for code: " + vError.Code())
+				}
 			}
-			if msg != "" {
-				msg += "; "
-			}
-			msg += fmt.Sprintf("%s: %s", field, errMsg)
 		}
-		if msg != "" {
-			return fmt.Errorf("%s", msg)
-		}
+		return vErrors
 	}
-
+	var errObject validation.ErrorObject
+	if errors.As(err, &errObject) {
+		translationEntries, ok := translations[errObject.Code()]
+		if ok {
+			tEntry, find := lo.Find(translationEntries, func(entry translationEntry) bool { return entry.defaultMessage == errObject.Error() })
+			if find {
+				return validation.NewError(errObject.Code(), tEntry.message)
+			} else {
+				slog.Warn("no translation for code: " + errObject.Code() + " message: " + errObject.Error())
+			}
+		} else {
+			slog.Warn("no translation for code: " + errObject.Code())
+		}
+		return errObject
+	}
 	return nil
 }

@@ -2,60 +2,63 @@ package database
 
 import (
 	"database/sql"
+	"llm-gateway/internal/model"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
-
-	"llm-gateway/internal/model"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
+	"gorm.io/gorm/logger"
 )
 
 func InitDB(dataDir string) (*gorm.DB, *sql.DB) {
 	dbPath := filepath.Join(dataDir, "application.db")
 
 	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
-		Logger: gormlogger.Default.LogMode(gormlogger.Info),
+		Logger: logger.NewSlogLogger(slog.Default(), logger.Config{
+			SlowThreshold: 200 * time.Millisecond,
+			LogLevel:      logger.Info,
+			Colorful:      false,
+		}),
 	})
 	if err != nil {
-		slog.Error("failed to open sqlite database", "error", err)
-		panic(err)
+		slog.Error("failed to connect application database", "error", err)
+		os.Exit(1)
 	}
-
 	if err := db.Exec("PRAGMA journal_mode=WAL").Error; err != nil {
 		slog.Error("failed to enable WAL mode", "error", err)
-		panic(err)
+		os.Exit(1)
 	}
-
 	if err := db.Exec("PRAGMA foreign_keys=ON").Error; err != nil {
 		slog.Error("failed to enable foreign keys", "error", err)
-		panic(err)
+		os.Exit(1)
+	}
+	conn, err := db.DB()
+	if err != nil {
+		slog.Error("failed to get application database connection", "error", err)
+		os.Exit(1)
 	}
 
+	// 自动迁移（创建表结构）
 	if err := db.AutoMigrate(
-		&model.User{},
+		&model.Config{},
 		&model.APIKey{},
 		&model.Provider{},
 		&model.Model{},
 		&model.DownstreamModel{},
-		&model.Config{},
+		&model.User{},
 	); err != nil {
-		slog.Error("failed to auto migrate sqlite", "error", err)
-		panic(err)
-	}
-
-	sqlDB, err := db.DB()
-	if err != nil {
-		slog.Error("failed to get underlying sql.DB", "error", err)
-		panic(err)
+		slog.Error("failed to migrate application database", "error", err)
+		os.Exit(1)
 	}
 
 	slog.Info("sqlite initialized", "path", dbPath)
-	return db, sqlDB
+	return db, conn
 }
 
 const (

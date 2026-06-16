@@ -1,5 +1,6 @@
-import { request } from '@/lib';
+import { request, type OptionsItem } from '@/lib';
 import type { API } from '@/typings';
+import { useQuery } from '@tanstack/react-query';
 
 export interface User {
   uid: number;
@@ -19,6 +20,22 @@ export interface CreateUserParams {
   phone?: string;
   department?: string;
   role?: 'admin' | 'user' | 'viewer';
+}
+
+
+export function useAllUsers() {
+  const { data: allUsers = [], ...rest } = useQuery<User[]>({
+    queryKey: ['all-users'],
+    queryFn: async () => {
+      const result = await userService.search({ pagination: { pageIndex: 1, pageSize: 10000 } });
+      return result.dataSet ?? [];
+    },
+  });
+  const allUserOptions = allUsers.map(u => ({
+    label: `${u.name}(${u.username})`, value: u.uid
+  } as OptionsItem));
+
+  return { allUsers, allUserOptions, ...rest };
 }
 
 export const userService: API.Service<User> = {

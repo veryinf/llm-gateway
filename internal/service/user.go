@@ -79,7 +79,7 @@ func (s *UserService) GetUser(id uint) (*model.User, error) {
 }
 
 // GenerateAPIKeyRecord creates and stores a new API key record with plaintext key.
-func GenerateAPIKeyRecord(db *gorm.DB, userID uint, name string, quotaLimit int64, rateLimitQPM int) (*model.APIKey, string, error) {
+func GenerateAPIKeyRecord(db *gorm.DB, uid uint, title string) (*model.APIKey, string, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
 		return nil, "", fmt.Errorf("generate random key: %w", err)
@@ -88,13 +88,10 @@ func GenerateAPIKeyRecord(db *gorm.DB, userID uint, name string, quotaLimit int6
 	rawKey := "sk-" + hex.EncodeToString(raw)
 
 	key := &model.APIKey{
-		UserID:       userID,
-		Key:          rawKey,
-		Name:         name,
-		QuotaLimit:   quotaLimit,
-		QuotaUsed:    0,
-		RateLimitQPM: rateLimitQPM,
-		IsActive:     true,
+		UID:      uid,
+		Key:      rawKey,
+		Title:    title,
+		IsActive: true,
 	}
 
 	if err := db.Create(key).Error; err != nil {

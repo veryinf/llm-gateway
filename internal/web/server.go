@@ -32,14 +32,14 @@ func InitHttpServer(db *gorm.DB, store *sql.DB, cfg *core.Config) *echo.Echo {
 	e.HTTPErrorHandler = common.LeErrorHandler
 
 	// 静态文件中间件放在认证之前，前端页面不需要登录
-	// 优先检测外置资源目录 dataDir/assets，不存在则用嵌入资源
+	// 优先检测外置资源目录 dataDir/static，不存在则用嵌入资源
 	var staticFS fs.FS
-	assetsPath := filepath.Join(cfg.DataDir, "assets")
-	if _, err := os.Stat(assetsPath); err == nil {
-		staticFS = os.DirFS(assetsPath)
-		slog.Info("serving frontend from external assets", "path", assetsPath)
+	staticPath := filepath.Join(cfg.DataDir, "static")
+	if _, err := os.Stat(staticPath); err == nil {
+		staticFS = os.DirFS(staticPath)
+		slog.Info("serving frontend from external static", "path", staticPath)
 	} else {
-		subFS, _ := fs.Sub(llmgateway.StaticFS, "assets")
+		subFS, _ := fs.Sub(llmgateway.StaticFS, "static")
 		staticFS = subFS
 	}
 	e.Use(middleware.StaticWithConfig(middleware.StaticConfig{
@@ -86,6 +86,7 @@ func InitHttpServer(db *gorm.DB, store *sql.DB, cfg *core.Config) *echo.Echo {
 	(&handlers.ProfileHandler{BaseHandler: base}).RegisterRoutes(bizApi)
 	(&handlers.ConfigHandler{BaseHandler: base}).RegisterRoutes(bizApi)
 	(&handlers.UserHandler{BaseHandler: base}).RegisterRoutes(bizApi)
+	(&handlers.ApikeyHandler{BaseHandler: base}).RegisterRoutes(bizApi)
 	// Health check
 	(&handlers.HealthHandler{BaseHandler: base}).RegisterRoutes(bizApi)
 

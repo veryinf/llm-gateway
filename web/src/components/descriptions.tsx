@@ -17,7 +17,35 @@ type DescriptionsProps = {
 
 export function Descriptions(props: DescriptionsProps) {
   const { title, extra, column = 2, items = [] } = props;
-  const gridCols = Array(column).fill('auto 1fr').join(' ');
+  const gridCols = `repeat(${column * 2}, minmax(min-content, 1fr))`;
+
+  // 预计算布局：每对占 span*2 列，累积判断行边界（含溢出换行）
+  const layoutInfo: { span: number; gridColStart: number; gridColEnd: number; isEndOfRow: boolean; isInLastRow: boolean }[] = [];
+  let curCol = 1;
+  let prevIdx = -1;
+
+  for (const item of items) {
+    const span = Math.min(item.span ?? 1, column);
+    const needed = span * 2;
+
+    if (curCol + needed > column * 2 + 1) {
+      if (prevIdx >= 0) layoutInfo[prevIdx].isEndOfRow = true;
+      curCol = 1;
+    }
+
+    const gridColStart = curCol;
+    const gridColEnd = curCol + needed;
+    layoutInfo.push({ span, gridColStart, gridColEnd, isEndOfRow: false, isInLastRow: false });
+    prevIdx = layoutInfo.length - 1;
+    curCol = gridColEnd;
+  }
+  if (prevIdx >= 0) layoutInfo[prevIdx].isEndOfRow = true;
+
+  // 反向遍历标记最后一行所有 item
+  for (let i = layoutInfo.length - 1; i >= 0; i--) {
+    layoutInfo[i].isInLastRow = true;
+    if (layoutInfo[i].isEndOfRow) break;
+  }
 
   return (
     <div className="w-full">
@@ -30,33 +58,29 @@ export function Descriptions(props: DescriptionsProps) {
       <div className="overflow-hidden rounded-md border text-sm">
         <div className="grid" style={{ gridTemplateColumns: gridCols }}>
           {items.map((item, index) => {
-            const rowIndex = Math.floor(index / column);
-            const colIndex = index % column;
-            const totalRows = Math.ceil(items.length / column);
-            const isLastRow = rowIndex === totalRows - 1;
-            const isLastCol = colIndex === column - 1;
-
+            const { gridColStart, gridColEnd, isEndOfRow, isInLastRow } = layoutInfo[index];
             return (
-              <React.Fragment key={index}>
+              <div
+                key={index}
+                className={cn(
+                  'flex min-w-0',
+                  !isEndOfRow && 'border-r',
+                  !isInLastRow && 'border-b',
+                )}
+                style={{ gridColumn: `${gridColStart} / ${gridColEnd}` }}
+              >
                 <div
                   className={cn(
-                    'bg-muted px-2 py-2.5 border-r text-right',
-                    !isLastRow && 'border-b',
+                    'bg-muted px-2 py-2.5 border-r text-right shrink-0',
                     props.labelClassName,
                   )}
                 >
                   {item.label}
                 </div>
-                <div
-                  className={cn(
-                    'min-w-0 px-2 py-2.5 whitespace-normal wrap-break-word',
-                    !isLastCol && 'border-r',
-                    !isLastRow && 'border-b',
-                  )}
-                >
+                <div className="min-w-0 px-2 py-2.5 whitespace-normal wrap-break-word flex-1">
                   {item.value}
                 </div>
-              </React.Fragment>
+              </div>
             );
           })}
         </div>

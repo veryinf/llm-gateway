@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { Copy, Check } from 'lucide-react';
 import { Page, type PageInformation } from '@/components/full-page';
 import { Descriptions } from '@/components/descriptions';
 import { FormFieldInput, FormFieldSelect } from '@/components/form';
@@ -10,13 +11,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Loading } from '@/components/loader';
-import { useModal } from '@/components/modal';
-import { useConfirm } from '@/components/confirm';
 import { EasyTooltip } from '@/components/easy-tooltip';
 import { userService, type User } from '@/services/user';
-import { apiKeyService, type CreateAPIKeyParams } from '@/services/api-key';
+import { apiKeyService } from '@/services/api-key';
 import { useBreadcrumb } from '@/hooks/use-breadcrumb';
-import { toast } from 'sonner';
 
 export const Route = createFileRoute('/users')({
   component: UsersPage,
@@ -97,7 +95,7 @@ function UsersPage() {
       cell: ({ row }) => (
         <EasyTooltip tooltip="点击查看详情">
           <Button variant="ghost" size="sm" asChild>
-            <Link to="/app-keys" search={{ user_id: row.original.uid }}>
+            <Link to="/keys" search={{ uid: [row.original.uid] }}>
               {row.original.apiKeyCount}
             </Link>
           </Button>
@@ -168,42 +166,30 @@ function UsersPage() {
   );
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={handleCopy}>
+      {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+    </Button>
+  );
+}
+
 function UserDetail({ entity }: { entity: User; }) {
   const uid = entity.uid;
-  const queryClient = useQueryClient();
-  const { Modal, modalHandler } = useModal();
-  const { Confirm, confirmHandler } = useConfirm();
-  const [newKeyName, setNewKeyName] = useState('');
-  const [newKeyQuota, setNewKeyQuota] = useState('');
-  const [newKeyQpm, setNewKeyQpm] = useState('');
-  const [createdRawKey, setCreatedRawKey] = useState<string | null>(null);
 
   const { data: apiKeys = [], isLoading: keysLoading } = useQuery({
     queryKey: ['user-api-keys', uid],
-    queryFn: () => apiKeyService.listByUser(uid),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (keyId: number) => apiKeyService.delete(uid, keyId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['user-api-keys', uid] });
-      toast.success('API Key 已删除');
-    },
-  });
-
-  const createMutation = useMutation({
-    mutationFn: (params: CreateAPIKeyParams) => apiKeyService.create(uid, params),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['user-api-keys', uid] });
-      setCreatedRawKey(data.raw_key);
-      setNewKeyName('');
-      setNewKeyQuota('');
-      setNewKeyQpm('');
-      modalHandler.close();
-      toast.success('API Key 创建成功');
-    },
-    onError: () => {
-      toast.error('创建失败');
+    queryFn: async () => {
+      const result = await apiKeyService.search({ filters: [{ field: 'uid', value: uid }] });
+      return result.dataSet ?? [];
     },
   });
 
@@ -239,17 +225,8 @@ function UserDetail({ entity }: { entity: User; }) {
 
       {/* API Keys 卡片 */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader>
           <CardTitle>API Keys</CardTitle>
-          <Button
-            size="sm"
-            onClick={() => {
-              setCreatedRawKey(null);
-              modalHandler.open('创建 API Key');
-            }}
-          >
-            新增 Key
-          </Button>
         </CardHeader>
         <CardContent>
           {keysLoading ? (
@@ -260,54 +237,30 @@ function UserDetail({ entity }: { entity: User; }) {
                 <TableRow>
                   <TableHead>名称</TableHead>
                   <TableHead>Key</TableHead>
-                  <TableHead>配额</TableHead>
-                  <TableHead>已使用</TableHead>
-                  <TableHead>QPM</TableHead>
                   <TableHead>状态</TableHead>
-                  <TableHead>创建时间</TableHead>
-                  <TableHead className="w-16">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {apiKeys.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-muted-foreground text-center">
+                    <TableCell colSpan={3} className="text-muted-foreground text-center">
                       暂无 API Key
                     </TableCell>
                   </TableRow>
                 ) : (
                   apiKeys.map((key) => (
-                    <TableRow key={key.id}>
-                      <TableCell>{key.name}</TableCell>
-                      <TableCell className="font-mono text-xs break-all">{key.key}</TableCell>
-                      <TableCell>{key.quota_limit > 0 ? key.quota_limit.toLocaleString() : '不限'}</TableCell>
-                      <TableCell>{key.quota_used.toLocaleString()}</TableCell>
-                      <TableCell>{key.rate_limit_qpm || '不限'}</TableCell>
+                    <TableRow key={key.keyId}>
+                      <TableCell>{key.title}</TableCell>
                       <TableCell>
-                        <Badge variant={key.is_active ? 'default' : 'destructive'}>
-                          {key.is_active ? '启用' : '禁用'}
-                        </Badge>
+                        <div className="flex items-center gap-1">
+                          <span className="font-mono text-xs break-all">{key.key}</span>
+                          <CopyButton text={key.key} />
+                        </div>
                       </TableCell>
-                      <TableCell>{new Date(key.created_at).toLocaleDateString()}</TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive"
-                          onClick={() => {
-                            confirmHandler.confirmInvoke(
-                              '确认删除',
-                              async () => {
-                                await deleteMutation.mutateAsync(key.id);
-                                return true;
-                              },
-                              `确认要删除 API Key「${key.name}」吗？`,
-                              true,
-                            );
-                          }}
-                        >
-                          删除
-                        </Button>
+                        <Badge variant={key.isActive ? 'default' : 'destructive'}>
+                          {key.isActive ? '启用' : '禁用'}
+                        </Badge>
                       </TableCell>
                     </TableRow>
                   ))
@@ -317,78 +270,6 @@ function UserDetail({ entity }: { entity: User; }) {
           )}
         </CardContent>
       </Card>
-
-      {/* 创建成功提示 */}
-      {createdRawKey && (
-        <Card className="border-green-500">
-          <CardHeader>
-            <CardTitle className="text-green-600">API Key 创建成功</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground mb-2 text-sm">请立即复制保存，此 Key 仅显示一次：</p>
-            <code className="bg-muted block rounded p-3 text-sm break-all">{createdRawKey}</code>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-2"
-              onClick={() => {
-                navigator.clipboard.writeText(createdRawKey);
-                toast.success('已复制到剪贴板');
-              }}
-            >
-              复制
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 创建 Key 弹窗 */}
-      <Modal>
-        <div className="flex flex-col gap-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">名称</label>
-            <input
-              value={newKeyName}
-              onChange={(e) => setNewKeyName(e.target.value)}
-              placeholder="例如: production-key"
-              className="border-input bg-background ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">配额限制 (0=不限)</label>
-            <input
-              type="number"
-              value={newKeyQuota}
-              onChange={(e) => setNewKeyQuota(e.target.value)}
-              placeholder="0"
-              className="border-input bg-background ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">QPM 限制 (0=不限)</label>
-            <input
-              type="number"
-              value={newKeyQpm}
-              onChange={(e) => setNewKeyQpm(e.target.value)}
-              placeholder="60"
-              className="border-input bg-background ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm"
-            />
-          </div>
-          <Button
-            disabled={!newKeyName || createMutation.isPending}
-            onClick={() => {
-              createMutation.mutate({
-                name: newKeyName,
-                quota_limit: Number(newKeyQuota) || 0,
-                rate_limit_qpm: Number(newKeyQpm) || 0,
-              });
-            }}
-          >
-            {createMutation.isPending ? '创建中...' : '创建'}
-          </Button>
-        </div>
-      </Modal>
-      <Confirm />
     </div>
   );
 }

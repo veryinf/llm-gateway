@@ -52,16 +52,16 @@ func main() {
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			cfg := &core.Config{
-				DataDir:  cmd.String("data-dir"),
-				HttpAddr: cmd.String("http-addr"),
-				LogMode:  cmd.String("log"),
-				LogLevel: cmd.String("log-level"),
+				DataDir:   cmd.String("data-dir"),
+				HttpAddr:  cmd.String("http-addr"),
+				LogMode:   cmd.String("log"),
+				LogLevel:  cmd.String("log-level"),
+				StartTime: time.Now(),
 				Build: core.BuildInfo{
 					Env:     core.BuildEnv,
 					Time:    core.BuildTime,
 					Version: core.BuildVersion,
 				},
-				StartTime: time.Now(),
 			}
 			command.StartServer(cfg)
 

@@ -205,7 +205,7 @@ go run ./cmd/gateway/ --admin-password mypass --http-addr :8080
 .\build.ps1 setup          # 安装依赖（Go + 前端）
 .\build.ps1 dev            # 开发模式运行后端
 .\build.ps1 dev-frontend   # 启动前端开发服务器 (localhost:5173)
-.\build.ps1 build          # 构建后端二进制 → output/lgw.exe
+.\build.ps1 build          # 构建后端二进制 → out/lgw.exe
 .\build.ps1 build-all      # 构建前端 + 后端（生产部署用）
 ```
 

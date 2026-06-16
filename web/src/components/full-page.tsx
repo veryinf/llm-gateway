@@ -33,6 +33,7 @@ type FormType = 'add' | 'update';
 type PageProps<TEntity> = PropsWithChildren<{
   /** 页面信息配置 */
   infomation: PageInformation;
+  ready?: boolean;
   /** 表格列定义 */
   columns: ColumnDef<TEntity, {}>[];
   /** 数据服务，提供增删改查等操作 */
@@ -74,7 +75,7 @@ type FormState = {
 
 export function Page<TEntity>(props: PageProps<TEntity>) {
   const { setBreadcrumbs } = useBreadcrumb();
-  const { modalHandler, Modal, meta } = useModal<{ entity?: TEntity }>();
+  const { modalHandler, Modal, meta } = useModal<{ entity?: TEntity; }>();
   const { PopupForm, formHandler } = usePopupForm<TEntity, FormState>();
   const { confirmHandler, Confirm } = useConfirm();
   const tableState = useRef<FullTableState | undefined>(undefined);
@@ -252,7 +253,7 @@ export function Page<TEntity>(props: PageProps<TEntity>) {
       });
     }
     return c;
-  }, []);
+  }, [props.ready !== false]);
 
   function handleRefresh(state: FullTableState): void {
     tableState.current = state;
@@ -284,7 +285,7 @@ export function Page<TEntity>(props: PageProps<TEntity>) {
             }
             {...infomation.page}
           />
-          <FullTable columns={columns} data={source?.list || []} total={source?.total || 0} loading={isLoading} onRefresh={handleRefresh} />
+          {props.ready === false ? <Loading /> : <FullTable columns={columns} data={source?.list || []} total={source?.total || 0} loading={isLoading} onRefresh={handleRefresh} />}
         </div>
       </div>
       <Modal>

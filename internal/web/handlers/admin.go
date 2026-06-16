@@ -29,15 +29,6 @@ func (h *AdminHandler) RegisterRoutes(g *echo.Group) {
 	g.PUT("/users/:id", h.UpdateUser)
 	g.DELETE("/users/:id", h.DeleteUser)
 
-	// API Key CRUD
-	g.GET("/users/:id/api-keys", h.ListAPIKeys)
-	g.POST("/users/:id/api-keys", h.CreateAPIKey)
-	g.DELETE("/users/:id/api-keys/:kid", h.DeleteAPIKey)
-
-	g.GET("/api-keys", h.ListAllAPIKeys)
-	g.DELETE("/api-keys/:id", h.DeleteAPIKeyByID)
-	g.PUT("/api-keys/:id/toggle", h.ToggleAPIKey)
-
 	// AKSK
 	g.POST("/users/:id/aksk", h.GenerateAKSK)
 	g.GET("/users/:id/aksk", h.GetAKSK)
@@ -91,14 +82,14 @@ func (h *AdminHandler) ListUsers(c echo.Context) error {
 	}
 
 	var counts []struct {
-		UserID uint
-		Count  int
+		UID   uint
+		Count int
 	}
-	h.DB.Model(&model.APIKey{}).Select("user_id, count(*) as count").Group("user_id").Scan(&counts)
+	h.DB.Model(&model.APIKey{}).Select("uid, count(*) as count").Group("uid").Scan(&counts)
 
 	countMap := make(map[uint]int, len(counts))
 	for _, c := range counts {
-		countMap[c.UserID] = c.Count
+		countMap[c.UID] = c.Count
 	}
 
 	result := make([]userWithCount, len(users))
@@ -184,112 +175,6 @@ func (h *AdminHandler) DeleteUser(c echo.Context) error {
 		return h.Error(-23, err.Error())
 	}
 	return c.JSON(200, common.NewResponse(0, "ok"))
-}
-
-// ======================== API Key Management ========================
-
-type createAPIKeyRequest struct {
-	Name         string `json:"name"`
-	QuotaLimit   int64  `json:"quota_limit"`
-	RateLimitQPM int    `json:"rate_limit_qpm"`
-}
-
-type createAPIKeyResponse struct {
-	APIKey *model.APIKey `json:"api_key"`
-	RawKey string        `json:"raw_key"`
-}
-
-func (h *AdminHandler) CreateAPIKey(c echo.Context) error {
-	userID, err := parseUintParam(c, "id")
-	if err != nil {
-		return h.Error(-23, "无效的用户 ID")
-	}
-
-	var req createAPIKeyRequest
-	if err := c.Bind(&req); err != nil {
-		return h.Error(-11, "请求参数错误")
-	}
-	if req.Name == "" {
-		return h.Error(-11, "名称不能为空")
-	}
-
-	keyRecord, rawKey, err := service.GenerateAPIKeyRecord(h.DB, userID, req.Name, req.QuotaLimit, req.RateLimitQPM)
-	if err != nil {
-		return h.Error(-21, err.Error())
-	}
-	return c.JSON(200, common.NewData(createAPIKeyResponse{APIKey: keyRecord, RawKey: rawKey}))
-}
-
-func (h *AdminHandler) ListAPIKeys(c echo.Context) error {
-	userID, err := parseUintParam(c, "id")
-	if err != nil {
-		return h.Error(-23, "无效的用户 ID")
-	}
-
-	var keys []model.APIKey
-	if err := h.DB.Where("user_id = ?", userID).Find(&keys).Error; err != nil {
-		return h.Error(-20, err.Error())
-	}
-	return c.JSON(200, common.NewDataSet(keys, int64(len(keys))))
-}
-
-func (h *AdminHandler) DeleteAPIKey(c echo.Context) error {
-	userID, err := parseUintParam(c, "id")
-	if err != nil {
-		return h.Error(-23, "无效的用户 ID")
-	}
-
-	kid, err := parseUintParam(c, "kid")
-	if err != nil {
-		return h.Error(-23, "无效的 API Key ID")
-	}
-
-	var key model.APIKey
-	if err := h.DB.Where("id = ? AND user_id = ?", kid, userID).First(&key).Error; err != nil {
-		return h.Error(-24, "API Key 不存在")
-	}
-
-	if err := h.DB.Delete(&model.APIKey{}, kid).Error; err != nil {
-		return h.Error(-23, err.Error())
-	}
-	return c.JSON(200, common.NewResponse(0, "ok"))
-}
-
-func (h *AdminHandler) ListAllAPIKeys(c echo.Context) error {
-	var keys []model.APIKey
-	if err := h.DB.Order("created_at desc").Find(&keys).Error; err != nil {
-		return h.Error(-20, err.Error())
-	}
-	return c.JSON(200, common.NewDataSet(keys, int64(len(keys))))
-}
-
-func (h *AdminHandler) DeleteAPIKeyByID(c echo.Context) error {
-	id, err := parseUintParam(c, "id")
-	if err != nil {
-		return h.Error(-23, "无效的 API Key ID")
-	}
-	if err := h.DB.Delete(&model.APIKey{}, id).Error; err != nil {
-		return h.Error(-23, err.Error())
-	}
-	return c.JSON(200, common.NewResponse(0, "ok"))
-}
-
-func (h *AdminHandler) ToggleAPIKey(c echo.Context) error {
-	id, err := parseUintParam(c, "id")
-	if err != nil {
-		return h.Error(-23, "无效的 API Key ID")
-	}
-
-	var key model.APIKey
-	if err := h.DB.First(&key, id).Error; err != nil {
-		return h.Error(-24, "API Key 不存在")
-	}
-
-	if err := h.DB.Model(&key).Update("is_active", !key.IsActive).Error; err != nil {
-		return h.Error(-22, err.Error())
-	}
-
-	return c.JSON(200, common.NewData(map[string]interface{}{"is_active": !key.IsActive}))
 }
 
 // ======================== AKSK Management ========================

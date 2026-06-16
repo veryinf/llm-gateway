@@ -3,7 +3,7 @@
 # Commands: setup, build, build-all, dev, dev-frontend, fmt, vet, help
 
 $BinaryName = "lgw.exe"
-$BuildDir = "output"
+$BuildDir = "out"
 $DataDir = "db"
 $WebDir = "web"
 

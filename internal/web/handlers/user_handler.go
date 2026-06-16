@@ -56,13 +56,13 @@ func (h *UserHandler) SearchUsers(c echo.Context) error {
 	}
 
 	var counts []struct {
-		UserID uint
-		Count  int
+		UID   uint
+		Count int
 	}
-	h.DB.Model(&model.APIKey{}).Select("user_id, count(*) as count").Group("user_id").Scan(&counts)
+	h.DB.Model(&model.APIKey{}).Select("uid, count(*) as count").Group("uid").Scan(&counts)
 	countMap := make(map[uint]int, len(counts))
 	for _, c := range counts {
-		countMap[c.UserID] = c.Count
+		countMap[c.UID] = c.Count
 	}
 
 	result := make([]userWithCount, len(users))
@@ -91,7 +91,7 @@ func (h *UserHandler) FetchUser(c echo.Context) error {
 		return h.Error(-24, "用户不存在")
 	}
 	var apiKeyCount int64
-	h.DB.Model(&model.APIKey{}).Where("user_id = ?", user.UID).Count(&apiKeyCount)
+	h.DB.Model(&model.APIKey{}).Where("uid = ?", user.UID).Count(&apiKeyCount)
 	return common.NewData(userWithCount{User: user, APIKeyCount: int(apiKeyCount)})
 }
 

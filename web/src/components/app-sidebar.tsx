@@ -29,7 +29,7 @@ const menuSet = {
   ],
   downstream: [
     { title: '用户管理', url: '/users', icon: Users },
-    { title: 'API Key 管理', url: '/app-keys', icon: Key },
+    { title: 'API Key 管理', url: '/keys', icon: Key },
     { title: '调用端模型', url: '/downstream-models', icon: Globe },
   ],
   routing: [
@@ -109,7 +109,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 const activeClass =
   'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground min-w-8 duration-200 ease-linear';
 
-function MenuItemRender({ item }: { item: MenuItem }) {
+function MenuItemRender({ item }: { item: MenuItem; }) {
   const location = useLocation();
   const isActive = location.pathname === item.url || location.pathname.startsWith(item.url + '/');
   return (

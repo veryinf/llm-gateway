@@ -15,7 +15,7 @@ type FilterItem struct {
 
 // SearchParams 搜索参数
 type SearchParams struct {
-	Pagination
-	Kw      string       `json:"kw"`
-	Filters []FilterItem `json:"filters"`
+	Pagination Pagination   `json:"pagination"`
+	Kw         string       `json:"kw"`
+	Filters    []FilterItem `json:"filters"`
 }

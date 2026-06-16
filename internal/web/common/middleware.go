@@ -43,7 +43,7 @@ func LeMiddleware(config LeMiddlewareConfig) echo.MiddlewareFunc {
 					tokenInfo, ok := config.TokenManager.ValidateToken(token)
 					if ok {
 						var user model.User
-						if core.DB.Where("id = ?", tokenInfo.UID).Find(&user).Error == nil {
+						if core.DB.Where("uid = ?", tokenInfo.UID).Find(&user).Error == nil {
 							cc.AuthUser = &user
 							cc.AuthToken = tokenInfo
 						}
@@ -117,12 +117,8 @@ func ProxyMiddleware() echo.MiddlewareFunc {
 				return proxyUnauthorized(c)
 			}
 
-			if apiKey.ExpiresAt != nil && apiKey.ExpiresAt.Before(time.Now()) {
-				return proxyUnauthorized(c)
-			}
-
 			var user model.User
-			if err := core.DB.Where("uid = ?", apiKey.UserID).First(&user).Error; err != nil {
+			if err := core.DB.Where("uid = ?", apiKey.UID).First(&user).Error; err != nil {
 				return proxyUnauthorized(c)
 			}
 			if user.Status != "active" {
@@ -130,7 +126,7 @@ func ProxyMiddleware() echo.MiddlewareFunc {
 			}
 
 			cc.AuthUser = &user
-			cc.APIKeyID = apiKey.ID
+			cc.APIKeyID = apiKey.KeyID
 
 			return next(cc)
 		}

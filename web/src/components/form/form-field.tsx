@@ -28,7 +28,7 @@ export type FormFieldProps<T extends any> = {
   validators?: EasyFieldOptions<T>['validators'];
 };
 
-export function FormField<T extends any = any>(props: FormFieldProps<T> & { children?: React.ReactNode | ((field: EasyFieldApi<T>, isInvalid?: boolean) => React.ReactNode) }) {
+export function FormField<T extends any = any>(props: FormFieldProps<T> & { children?: React.ReactNode | ((field: EasyFieldApi<T>, isInvalid?: boolean) => React.ReactNode); }) {
   let validators = props.validators;
   if (!validators && props.required) {
     validators = {
@@ -63,7 +63,7 @@ export function FormField<T extends any = any>(props: FormFieldProps<T> & { chil
   );
 }
 
-export function FormFieldInput<T extends any = any>(props: FormFieldProps<T> & { type?: 'text' | 'password' | 'number' }) {
+export function FormFieldInput<T extends any = any>(props: FormFieldProps<T> & { type?: 'text' | 'password' | 'number'; }) {
   function handleChange(field: EasyFieldApi<T>, e: React.ChangeEvent<HTMLInputElement>) {
     if (props.type === 'number') {
       field.handleChange(parseFloat(e.target.value));
@@ -81,7 +81,7 @@ export function FormFieldInput<T extends any = any>(props: FormFieldProps<T> & {
   );
 }
 
-export function FormFieldTextarea<T extends any = any>(props: FormFieldProps<T> & { rows?: number }) {
+export function FormFieldTextarea<T extends any = any>(props: FormFieldProps<T> & { rows?: number; }) {
   return (
     <FormField {...omit(props, [])}>
       {(field, isInvalid) => {
@@ -91,7 +91,7 @@ export function FormFieldTextarea<T extends any = any>(props: FormFieldProps<T> 
   );
 }
 
-export function FormFieldCheckboxGroup<T extends any = any>(props: FormFieldProps<T> & { options: OptionsItem[] | GroupOptionsItem[]; columns?: number }) {
+export function FormFieldCheckboxGroup<T extends any = any>(props: FormFieldProps<T> & { options: OptionsItem[] | GroupOptionsItem[]; columns?: number; }) {
   let validators = props.validators;
   if (!validators && props.required) {
     validators = {
@@ -118,22 +118,22 @@ export function FormFieldCheckboxGroup<T extends any = any>(props: FormFieldProp
         {props.options.length > 0 && 'options' in props.options[0]
           ? (props.options as GroupOptionsItem[]).map((_group: GroupOptionsItem) => <>不支持</>)
           : (props.options as OptionsItem[]).map((option: OptionsItem, index) => {
-              console.log(field.state.value?.includes(option.value), field.state.value);
-              return (
-                <div className="flex items-center gap-2 py-1" key={option.value}>
-                  <Checkbox id={`${field.name}-${option.value}-${index}`} checked={field.state.value?.includes(option.value) || false} onCheckedChange={(value) => handleChange(value, option.value)} aria-invalid={isInvalid} />
-                  <FieldLabel htmlFor={`${field.name}-${option.value}-${index}`} className="font-normal">
-                    {option.label}
-                  </FieldLabel>
-                </div>
-              );
-            })}
+            console.log(field.state.value?.includes(option.value), field.state.value);
+            return (
+              <div className="flex items-center gap-2 py-1" key={option.value}>
+                <Checkbox id={`${field.name}-${option.value}-${index}`} checked={field.state.value?.includes(option.value) || false} onCheckedChange={(value) => handleChange(value, option.value)} aria-invalid={isInvalid} />
+                <FieldLabel htmlFor={`${field.name}-${option.value}-${index}`} className="font-normal">
+                  {option.label}
+                </FieldLabel>
+              </div>
+            );
+          })}
       </div>
     </FormField>
   );
 }
 
-export function FormFieldSelect<T extends any = any>(props: FormFieldProps<T> & { options: OptionsItem[] | GroupOptionsItem[]; onCreate?: () => void; onRefresh?: () => void }) {
+export function FormFieldSelect<T extends any = any>(props: FormFieldProps<T> & { options: OptionsItem[] | GroupOptionsItem[]; onCreate?: () => void; onRefresh?: () => void; }) {
   return (
     <FormField
       {...omit(props, ['options', 'onCreate', 'onRefresh', 'titleMore'])}
@@ -166,20 +166,20 @@ export function FormFieldSelect<T extends any = any>(props: FormFieldProps<T> & 
             <SelectContent>
               {props.options.length > 0 && 'options' in props.options[0]
                 ? (props.options as GroupOptionsItem[]).map((group: GroupOptionsItem) => (
-                    <SelectGroup>
-                      <SelectLabel>{group.label}</SelectLabel>
-                      {group.options.map((option: OptionsItem) => (
-                        <ComboboxItem key={option.value} value={option.value}>
-                          {option.label}
-                        </ComboboxItem>
-                      ))}
-                    </SelectGroup>
-                  ))
+                  <SelectGroup>
+                    <SelectLabel>{group.label}</SelectLabel>
+                    {group.options.map((option: OptionsItem) => (
+                      <ComboboxItem key={option.value} value={option.value}>
+                        {option.label}
+                      </ComboboxItem>
+                    ))}
+                  </SelectGroup>
+                ))
                 : (props.options as OptionsItem[]).map((option: OptionsItem) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
+                  <SelectItem key={option.value} value={String(option.value)}>
+                    {option.label}
+                  </SelectItem>
+                ))}
             </SelectContent>
           </Select>
         );
@@ -188,7 +188,7 @@ export function FormFieldSelect<T extends any = any>(props: FormFieldProps<T> & 
   );
 }
 
-export function FormFieldCombobox<T extends any = any>(_props: FormFieldProps<T> & { options: OptionsItem[] | GroupOptionsItem[] }) {
+export function FormFieldCombobox<T extends any = any>(_props: FormFieldProps<T> & { options: OptionsItem[] | GroupOptionsItem[]; }) {
   const anchor = useComboboxAnchor();
   const frameworks = ['Next.js', 'SvelteKit', 'Nuxt.js', 'Remix', 'Astro'] as const;
   return (
@@ -230,7 +230,7 @@ export function FormFieldCombobox<T extends any = any>(_props: FormFieldProps<T>
   );
 }
 
-export function FormFieldSwitch<T extends any = any>(props: FormFieldProps<T> & { switchLabel?: string }) {
+export function FormFieldSwitch<T extends any = any>(props: FormFieldProps<T> & { switchLabel?: string; }) {
   return (
     <FormField {...omit(props)}>
       {(field, isInvalid) => {

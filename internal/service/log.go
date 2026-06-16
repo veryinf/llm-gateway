@@ -40,10 +40,9 @@ type LogService struct {
 }
 
 // InitSlog 初始化全局 slog 日志。
-//
-//	mode:   "console" | "file" | "both"
-//	level:  "debug" | "info" | "warn" | "error"
-//	logDir: 日志文件目录，为空时默认 "./logs"
+//   mode:   "console" | "file" | "both"
+//   level:  "debug" | "info" | "warn" | "error"
+//   logDir: 日志文件目录，为空时默认 "./logs"
 func InitSlog(mode, level, logDir string) *LogService {
 	lvl := parseLogLevel(level)
 

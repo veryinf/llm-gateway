@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -28,16 +29,16 @@ func InitStore(dataDir string) *sql.DB {
 	db, err := sql.Open("duckdb", dbPath)
 	if err != nil {
 		slog.Error("failed to open duckdb database", "error", err)
-		panic(err)
+		os.Exit(1)
 	}
 	if err := db.Ping(); err != nil {
 		slog.Error("failed to ping duckdb database", "error", err)
-		panic(err)
+		os.Exit(1)
 	}
 
 	if err := runMigrations(db); err != nil {
 		slog.Error("failed to run duckdb migrations", "error", err)
-		panic(err)
+		os.Exit(1)
 	}
 
 	slog.Info("duckdb initialized", "path", dataDir)

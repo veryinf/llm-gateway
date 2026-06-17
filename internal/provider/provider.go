@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
 	"strings"
 )
 
@@ -105,8 +107,10 @@ type ChatStreamChunk struct {
 
 // ModelInfo 模型信息
 type ModelInfo struct {
-	ID     string `json:"id"`
-	Object string `json:"object"`
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	Created int64  `json:"created"`
+	OwnedBy string `json:"owned_by"`
 }
 
 // LLMProvider LLM Provider 统一接口
@@ -121,4 +125,60 @@ type LLMProvider interface {
 	ChatCompletionStream(ctx context.Context, req *ChatRequest) (<-chan *ChatStreamChunk, <-chan error)
 	// ListModels 获取可用模型列表
 	ListModels(ctx context.Context) ([]ModelInfo, error)
+}
+
+// BaseProvider 所有 Provider 共享的基础设施
+type BaseProvider struct {
+	Name       string
+	BaseURL    string
+	APIKey     string
+	HTTPClient *http.Client
+}
+
+// NewBaseProvider 创建 BaseProvider，baseURL 末尾斜杠会被去除
+func NewBaseProvider(name, baseURL, apiKey string) BaseProvider {
+	return BaseProvider{
+		Name:       name,
+		BaseURL:    strings.TrimRight(baseURL, "/"),
+		APIKey:     apiKey,
+		HTTPClient: newHTTPClient(),
+	}
+}
+
+func (b *BaseProvider) ID() string   { return b.Name }
+func (b *BaseProvider) Type() string { return "base" }
+
+// ListModels 获取可用模型列表 — GET {baseURL}/v1/models
+func (b *BaseProvider) ListModels(ctx context.Context) ([]ModelInfo, error) {
+	url := b.BaseURL + "/v1/models"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	b.SetHeaders(req)
+
+	resp, err := b.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("http request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, handleHTTPError(resp, b.Type())
+	}
+
+	var result struct {
+		Data []ModelInfo `json:"data"`
+	}
+	if err := decodeJSON(resp, &result); err != nil {
+		return nil, err
+	}
+	return result.Data, nil
+}
+
+// SetHeaders 设置通用请求头（子类型可覆盖）
+func (b *BaseProvider) SetHeaders(req *http.Request) {
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+b.APIKey)
 }

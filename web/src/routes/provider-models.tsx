@@ -1,16 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Page, type PageInformation } from '@/components/full-page';
+import { Descriptions } from '@/components/descriptions';
 import { FormFieldInput, FormFieldSelect, FormFieldSwitch, FormFieldTextarea } from '@/components/form';
 import { Badge } from '@/components/ui/badge';
-import { modelService, type Model } from '@/services/model';
-import { providerService, type Provider } from '@/services/provider';
+import { providerModelService, type ProviderModel } from '@/services/provider-model';
+import { useAllProviders } from '@/services/provider';
 import { useBreadcrumb } from '@/hooks/use-breadcrumb';
-import { useQuery } from '@tanstack/react-query';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { request } from '@/lib';
-import type { API } from '@/typings';
 
 export const Route = createFileRoute('/provider-models')({
   component: ProviderModelsPage,
@@ -19,7 +16,7 @@ export const Route = createFileRoute('/provider-models')({
 const pageInformation: PageInformation = {
   name: 'provider-models',
   entityName: '模型',
-  page: { title: '服务商模型', description: '管理各 Provider 下的模型详细信息' },
+  page: { title: '服务商模型', description: '管理各服务商下的模型详细信息' },
   breadcrumbs: [{ title: '上游' }, { title: '服务商模型' }],
 };
 
@@ -37,50 +34,13 @@ function formatPrice(value: number) {
 
 function ProviderModelsPage() {
   const { setBreadcrumbs } = useBreadcrumb();
-  const [providerFilter, setProviderFilter] = useState<string>('all');
+  const { allProviderOptions, isLoading } = useAllProviders();
 
   useEffect(() => {
     setBreadcrumbs(pageInformation.breadcrumbs ?? []);
   }, []);
 
-  const { data: providers } = useQuery({
-    queryKey: ['providers-list'],
-    queryFn: () => providerService.search({}),
-  });
-
-  const providerOptions = (providers?.dataSet ?? []).map((p: Provider) => ({
-    label: p.title,
-    value: String(p.providerId),
-  }));
-
-  const dynamicPageName = useMemo(() => {
-    return providerFilter === 'all' ? 'provider-models' : `provider-models-p${providerFilter}`;
-  }, [providerFilter]);
-
-  const filteredService = useMemo<API.Service<Model>>(
-    () => ({
-      ...modelService,
-      async search(params) {
-        const filters = [...(params.filters ?? [])];
-        if (providerFilter !== 'all') {
-          filters.push({ field: 'providerId', value: Number(providerFilter) });
-        }
-        const res = await request.post<API.DataSet<Model>>('/provider-models/search', {
-          ...params,
-          filters,
-        });
-        return res.data;
-      },
-    }),
-    [providerFilter],
-  );
-
-  const dynamicPageInfo = useMemo(
-    () => ({ ...pageInformation, name: dynamicPageName }),
-    [dynamicPageName],
-  );
-
-  const columns: ColumnDef<Model, any>[] = [
+  const columns: ColumnDef<ProviderModel, any>[] = [
     {
       accessorKey: 'name',
       header: '模型名称',
@@ -93,18 +53,10 @@ function ProviderModelsPage() {
       cell: ({ row }) => row.original.displayName || '-',
     },
     {
-      accessorKey: 'provider',
-      header: 'Provider',
-      meta: { label: 'Provider', className: 'w-[140px]' },
-      cell: ({ row }) => row.original.provider?.title ?? '-',
-    },
-    {
-      accessorKey: 'apiType',
-      header: 'API 类型',
-      meta: { label: 'API 类型', className: 'w-[90px]' },
-      cell: ({ row }) => (
-        <Badge variant="outline">{row.original.apiType === 'anthropic' ? 'Anthropic' : 'OpenAI'}</Badge>
-      ),
+      accessorKey: 'providerId',
+      header: '服务商',
+      enableColumnFilter: true,
+      meta: { label: '服务商', className: 'w-[140px]', emuns: allProviderOptions },
     },
     {
       accessorKey: 'maxContextTokens',
@@ -154,11 +106,10 @@ function ProviderModelsPage() {
     },
   ];
 
-  const formInitialValue = (_type: string, entity?: Model) => ({
+  const formInitialValue = (_type: string, entity?: ProviderModel) => ({
     modelId: entity?.modelId ?? 0,
-    providerId: entity?.providerId ?? 0,
+    providerId: String(entity?.providerId ?? 0) as any,
     name: entity?.name ?? '',
-    apiType: entity?.apiType ?? 'openai',
     displayName: entity?.displayName ?? '',
     description: entity?.description ?? '',
     maxContextTokens: entity?.maxContextTokens ?? 0,
@@ -170,73 +121,62 @@ function ProviderModelsPage() {
     isActive: entity?.isActive ?? true,
   });
 
-  const apiTypeOptions = [
-    { label: 'OpenAI', value: 'openai' },
-    { label: 'Anthropic', value: 'anthropic' },
-  ];
-
-  const renderForm = (form: any, _entity?: Model) => (
-    <div className="flex flex-col gap-4 max-h-[70vh] overflow-y-auto pr-2">
-      <div className="text-sm font-medium text-muted-foreground">基础信息</div>
-      <FormFieldInput form={form} name="name" title="模型名称" required placeholder="例如: gpt-4o, claude-3-opus" />
-      <FormFieldInput form={form} name="displayName" title="展示名" placeholder="用户友好的显示名称" />
-      <FormFieldSelect form={form} name="providerId" title="Provider" options={providerOptions} required />
-      <FormFieldSelect form={form} name="apiType" title="API 类型" options={apiTypeOptions} required />
-      <FormFieldTextarea form={form} name="description" title="描述" placeholder="模型描述信息" rows={2} />
-
-      <div className="text-sm font-medium text-muted-foreground border-t pt-4">容量与限制</div>
-      <div className="grid grid-cols-2 gap-4">
-        <FormFieldInput form={form} name="maxContextTokens" title="最大上下文 (tokens)" type="number" placeholder="128000" />
-        <FormFieldInput form={form} name="maxOutputTokens" title="最大输出 (tokens)" type="number" placeholder="4096" />
-      </div>
-
-      <div className="text-sm font-medium text-muted-foreground border-t pt-4">速率限制</div>
-      <div className="grid grid-cols-2 gap-4">
-        <FormFieldInput form={form} name="tpm" title="TPM (0=不限)" type="number" tips="Tokens Per Minute" />
-        <FormFieldInput form={form} name="qpm" title="QPM (0=不限)" type="number" tips="Queries Per Minute" />
-      </div>
-
-      <div className="text-sm font-medium text-muted-foreground border-t pt-4">定价 (per 1M tokens)</div>
-      <div className="grid grid-cols-2 gap-4">
-        <FormFieldInput form={form} name="inputPrice" title="输入单价 ($)" type="number" placeholder="0.00" />
-        <FormFieldInput form={form} name="outputPrice" title="输出单价 ($)" type="number" placeholder="0.00" />
-      </div>
-
-      <FormFieldSwitch form={form} name="isActive" title="启用" switchLabel="启用此服务商模型" />
-    </div>
-  );
-
   return (
-    <div className="flex flex-1 flex-col">
-      <div className="@container/main flex flex-1 flex-col gap-2">
-        <div className="flex flex-col gap-4 py-4 px-4">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Provider 筛选:</span>
-            <Select value={providerFilter} onValueChange={setProviderFilter}>
-              <SelectTrigger className="w-[200px] h-8">
-                <SelectValue placeholder="全部 Provider" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部 Provider</SelectItem>
-                {providerOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+    <Page<ProviderModel>
+      infomation={pageInformation}
+      ready={!isLoading}
+      columns={columns}
+      service={providerModelService}
+      options={{ showSelectColumn: false }}
+      formInitialValue={formInitialValue}
+      renderViewDetail={(entity) => <ProviderModelDetail entity={entity} />}
+      renderViewForm={(form, _entity, _formType) => {
+        return <div className="flex flex-col gap-4 overflow-y-auto pr-2">
+          <div className="text-sm font-medium text-muted-foreground">基础信息</div>
+          <div className="grid grid-cols-3 gap-4">
+            <FormFieldInput className='flex-1' form={form} name="name" title="模型名称" required placeholder="例如: gpt-4o, claude-3-opus" />
+            <FormFieldInput className='flex-1' form={form} name="displayName" title="展示名" placeholder="用户友好的显示名称" />
+            <FormFieldSelect className='flex-1' form={form} name="providerId" title="服务商" options={allProviderOptions} required />
           </div>
-        </div>
-      </div>
-      <Page<Model>
-        infomation={dynamicPageInfo}
-        columns={columns}
-        service={filteredService}
-        options={{ showSelectColumn: false }}
-        formInitialValue={formInitialValue}
-        renderViewAdd={(form) => renderForm(form)}
-        renderViewUpdate={(form, entity) => renderForm(form, entity)}
-      />
-    </div>
+          <FormFieldTextarea form={form} name="description" title="描述" placeholder="模型描述信息" rows={2} />
+          <FormFieldSwitch form={form} name="isActive" title="启用" switchLabel="启用此服务商模型" />
+
+          <div className="text-sm font-medium text-muted-foreground border-t pt-4">更多信息</div>
+          <div className="grid grid-cols-3 gap-4">
+            <FormFieldInput form={form} name="maxContextTokens" title="最大上下文 (tokens)" type="number" placeholder="128000" />
+            <FormFieldInput form={form} name="maxOutputTokens" title="最大输出 (tokens)" type="number" placeholder="4096" />
+            <FormFieldInput form={form} name="tpm" title="TPM (0=不限)" type="number" tips="Tokens Per Minute" />
+            <FormFieldInput form={form} name="qpm" title="QPM (0=不限)" type="number" tips="Queries Per Minute" />
+            <FormFieldInput form={form} name="inputPrice" title="输入单价 ($)" type="number" placeholder="0.00" />
+            <FormFieldInput form={form} name="outputPrice" title="输出单价 ($)" type="number" placeholder="0.00" />
+          </div>
+        </div>;
+      }}
+    />
+  );
+}
+
+function ProviderModelDetail({ entity }: { entity: ProviderModel; }) {
+  return (
+    <Descriptions
+      title="模型信息"
+      labelClassName="w-24"
+      items={[
+        { label: '模型名称', value: <span className="font-mono text-xs">{entity.name}</span> },
+        { label: '展示名', value: entity.displayName || '-' },
+        { label: '服务商', value: entity.provider?.title ?? '-' },
+        { label: '描述', value: entity.description || '-' },
+        { label: '最大上下文', value: formatTokens(entity.maxContextTokens) },
+        { label: '最大输出', value: formatTokens(entity.maxOutputTokens) },
+        { label: 'TPM', value: entity.tpm ? formatTokens(entity.tpm) : '-' },
+        { label: 'QPM', value: entity.qpm ? String(entity.qpm) : '-' },
+        { label: '输入单价', value: formatPrice(entity.inputPrice) },
+        { label: '输出单价', value: formatPrice(entity.outputPrice) },
+        {
+          label: '状态',
+          value: <Badge variant={entity.isActive ? 'default' : 'destructive'}>{entity.isActive ? '启用' : '禁用'}</Badge>,
+        },
+      ]}
+    />
   );
 }

@@ -10,13 +10,13 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UsersRouteImport } from './routes/users'
+import { Route as UserModelsRouteImport } from './routes/user-models'
+import { Route as UserKeysRouteImport } from './routes/user-keys'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RequestLogsRouteImport } from './routes/request-logs'
 import { Route as ProvidersRouteImport } from './routes/providers'
 import { Route as ProviderModelsRouteImport } from './routes/provider-models'
 import { Route as ModelsRouteImport } from './routes/models'
-import { Route as KeysRouteImport } from './routes/keys'
-import { Route as DownstreamModelsRouteImport } from './routes/downstream-models'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthLoginRouteImport } from './routes/auth/login'
@@ -24,6 +24,16 @@ import { Route as AuthLoginRouteImport } from './routes/auth/login'
 const UsersRoute = UsersRouteImport.update({
   id: '/users',
   path: '/users',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const UserModelsRoute = UserModelsRouteImport.update({
+  id: '/user-models',
+  path: '/user-models',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const UserKeysRoute = UserKeysRouteImport.update({
+  id: '/user-keys',
+  path: '/user-keys',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -51,16 +61,6 @@ const ModelsRoute = ModelsRouteImport.update({
   path: '/models',
   getParentRoute: () => rootRouteImport,
 } as any)
-const KeysRoute = KeysRouteImport.update({
-  id: '/keys',
-  path: '/keys',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DownstreamModelsRoute = DownstreamModelsRouteImport.update({
-  id: '/downstream-models',
-  path: '/downstream-models',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -80,26 +80,26 @@ const AuthLoginRoute = AuthLoginRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
-  '/downstream-models': typeof DownstreamModelsRoute
-  '/keys': typeof KeysRoute
   '/models': typeof ModelsRoute
   '/provider-models': typeof ProviderModelsRoute
   '/providers': typeof ProvidersRoute
   '/request-logs': typeof RequestLogsRoute
   '/settings': typeof SettingsRoute
+  '/user-keys': typeof UserKeysRoute
+  '/user-models': typeof UserModelsRoute
   '/users': typeof UsersRoute
   '/auth/login': typeof AuthLoginRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
-  '/downstream-models': typeof DownstreamModelsRoute
-  '/keys': typeof KeysRoute
   '/models': typeof ModelsRoute
   '/provider-models': typeof ProviderModelsRoute
   '/providers': typeof ProvidersRoute
   '/request-logs': typeof RequestLogsRoute
   '/settings': typeof SettingsRoute
+  '/user-keys': typeof UserKeysRoute
+  '/user-models': typeof UserModelsRoute
   '/users': typeof UsersRoute
   '/auth/login': typeof AuthLoginRoute
 }
@@ -107,13 +107,13 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
-  '/downstream-models': typeof DownstreamModelsRoute
-  '/keys': typeof KeysRoute
   '/models': typeof ModelsRoute
   '/provider-models': typeof ProviderModelsRoute
   '/providers': typeof ProvidersRoute
   '/request-logs': typeof RequestLogsRoute
   '/settings': typeof SettingsRoute
+  '/user-keys': typeof UserKeysRoute
+  '/user-models': typeof UserModelsRoute
   '/users': typeof UsersRoute
   '/auth/login': typeof AuthLoginRoute
 }
@@ -122,39 +122,39 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/dashboard'
-    | '/downstream-models'
-    | '/keys'
     | '/models'
     | '/provider-models'
     | '/providers'
     | '/request-logs'
     | '/settings'
+    | '/user-keys'
+    | '/user-models'
     | '/users'
     | '/auth/login'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/dashboard'
-    | '/downstream-models'
-    | '/keys'
     | '/models'
     | '/provider-models'
     | '/providers'
     | '/request-logs'
     | '/settings'
+    | '/user-keys'
+    | '/user-models'
     | '/users'
     | '/auth/login'
   id:
     | '__root__'
     | '/'
     | '/dashboard'
-    | '/downstream-models'
-    | '/keys'
     | '/models'
     | '/provider-models'
     | '/providers'
     | '/request-logs'
     | '/settings'
+    | '/user-keys'
+    | '/user-models'
     | '/users'
     | '/auth/login'
   fileRoutesById: FileRoutesById
@@ -162,13 +162,13 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DashboardRoute: typeof DashboardRoute
-  DownstreamModelsRoute: typeof DownstreamModelsRoute
-  KeysRoute: typeof KeysRoute
   ModelsRoute: typeof ModelsRoute
   ProviderModelsRoute: typeof ProviderModelsRoute
   ProvidersRoute: typeof ProvidersRoute
   RequestLogsRoute: typeof RequestLogsRoute
   SettingsRoute: typeof SettingsRoute
+  UserKeysRoute: typeof UserKeysRoute
+  UserModelsRoute: typeof UserModelsRoute
   UsersRoute: typeof UsersRoute
   AuthLoginRoute: typeof AuthLoginRoute
 }
@@ -180,6 +180,20 @@ declare module '@tanstack/react-router' {
       path: '/users'
       fullPath: '/users'
       preLoaderRoute: typeof UsersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/user-models': {
+      id: '/user-models'
+      path: '/user-models'
+      fullPath: '/user-models'
+      preLoaderRoute: typeof UserModelsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/user-keys': {
+      id: '/user-keys'
+      path: '/user-keys'
+      fullPath: '/user-keys'
+      preLoaderRoute: typeof UserKeysRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -217,20 +231,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ModelsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/keys': {
-      id: '/keys'
-      path: '/keys'
-      fullPath: '/keys'
-      preLoaderRoute: typeof KeysRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/downstream-models': {
-      id: '/downstream-models'
-      path: '/downstream-models'
-      fullPath: '/downstream-models'
-      preLoaderRoute: typeof DownstreamModelsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/dashboard': {
       id: '/dashboard'
       path: '/dashboard'
@@ -258,13 +258,13 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRoute,
-  DownstreamModelsRoute: DownstreamModelsRoute,
-  KeysRoute: KeysRoute,
   ModelsRoute: ModelsRoute,
   ProviderModelsRoute: ProviderModelsRoute,
   ProvidersRoute: ProvidersRoute,
   RequestLogsRoute: RequestLogsRoute,
   SettingsRoute: SettingsRoute,
+  UserKeysRoute: UserKeysRoute,
+  UserModelsRoute: UserModelsRoute,
   UsersRoute: UsersRoute,
   AuthLoginRoute: AuthLoginRoute,
 }

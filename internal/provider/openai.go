@@ -1,62 +1,40 @@
 package provider
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net"
 	"net/http"
-	"strings"
-	"time"
 )
 
-// OpenAIProvider OpenAI Provider 实现
+// OpenAIProvider OpenAI 协议适配器（同时兼容 OpenAI Compatible 服务）
 type OpenAIProvider struct {
-	name       string
-	baseURL    string
-	apiKey     string
-	httpClient *http.Client
+	BaseProvider
+	apiType string // "openai" 或 "openai-compatible"
 }
 
 // NewOpenAIProvider 创建 OpenAI Provider
 func NewOpenAIProvider(name, baseURL, apiKey string) *OpenAIProvider {
-	baseURL = strings.TrimRight(baseURL, "/")
 	return &OpenAIProvider{
-		name:    name,
-		baseURL: baseURL,
-		apiKey:  apiKey,
-		httpClient: &http.Client{
-			Transport: &http.Transport{
-				DialContext: (&net.Dialer{
-					Timeout:   10 * time.Second,
-					KeepAlive: 30 * time.Second,
-				}).DialContext,
-				TLSHandshakeTimeout:   10 * time.Second,
-				ResponseHeaderTimeout: 30 * time.Second,
-				MaxIdleConns:          100,
-				MaxIdleConnsPerHost:   20,
-				IdleConnTimeout:       90 * time.Second,
-			},
-		},
+		BaseProvider: NewBaseProvider(name, baseURL, apiKey),
+		apiType:      "openai",
 	}
 }
 
-// ID 返回 provider 名称
-func (p *OpenAIProvider) ID() string {
-	return p.name
+// NewOpenAICompatibleProvider 创建 OpenAI 兼容 Provider（DeepSeek、通义、Kimi、Ollama 等）
+func NewOpenAICompatibleProvider(name, baseURL, apiKey string) *OpenAIProvider {
+	return &OpenAIProvider{
+		BaseProvider: NewBaseProvider(name, baseURL, apiKey),
+		apiType:      "openai-compatible",
+	}
 }
 
-// Type 返回 provider 类型
-func (p *OpenAIProvider) Type() string {
-	return "openai"
-}
+func (p *OpenAIProvider) Type() string { return p.apiType }
 
 // ChatCompletion 非流式聊天补全
 func (p *OpenAIProvider) ChatCompletion(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {
-	url := p.baseURL + "/chat/completions"
+	url := p.BaseURL + "/chat/completions"
 
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -67,24 +45,22 @@ func (p *OpenAIProvider) ChatCompletion(ctx context.Context, req *ChatRequest) (
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
-	p.setHeaders(httpReq)
+	p.SetHeaders(httpReq)
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := p.HTTPClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("http request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("openai api error: status=%d body=%s", resp.StatusCode, string(respBody))
+		return nil, handleHTTPError(resp, p.Type())
 	}
 
 	var chatResp ChatResponse
-	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
+	if err := decodeJSON(resp, &chatResp); err != nil {
+		return nil, err
 	}
-
 	return &chatResp, nil
 }
 
@@ -99,7 +75,7 @@ func (p *OpenAIProvider) ChatCompletionStream(ctx context.Context, req *ChatRequ
 
 		reqCopy := *req
 		reqCopy.Stream = true
-		url := p.baseURL + "/chat/completions"
+		url := p.BaseURL + "/chat/completions"
 
 		body, err := json.Marshal(reqCopy)
 		if err != nil {
@@ -112,10 +88,10 @@ func (p *OpenAIProvider) ChatCompletionStream(ctx context.Context, req *ChatRequ
 			errCh <- fmt.Errorf("create request: %w", err)
 			return
 		}
-		p.setHeaders(httpReq)
+		p.SetHeaders(httpReq)
 		httpReq.Header.Set("Accept", "text/event-stream")
 
-		resp, err := p.httpClient.Do(httpReq)
+		resp, err := p.HTTPClient.Do(httpReq)
 		if err != nil {
 			errCh <- fmt.Errorf("http request: %w", err)
 			return
@@ -123,89 +99,20 @@ func (p *OpenAIProvider) ChatCompletionStream(ctx context.Context, req *ChatRequ
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			respBody, _ := io.ReadAll(resp.Body)
-			errCh <- fmt.Errorf("openai api error: status=%d body=%s", resp.StatusCode, string(respBody))
+			errCh <- handleHTTPError(resp, p.Type())
 			return
 		}
 
-		scanner := bufio.NewScanner(resp.Body)
-		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-
-		for scanner.Scan() {
-			select {
-			case <-ctx.Done():
-				errCh <- ctx.Err()
-				return
-			default:
-			}
-
-			line := scanner.Text()
-			line = strings.TrimSpace(line)
-
-			if line == "" {
-				continue
-			}
-
-			if !strings.HasPrefix(line, "data:") {
-				continue
-			}
-
-			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-
-			if data == "[DONE]" {
-				return
-			}
-
+		for event := range ReadSSE(ctx, resp.Body) {
 			var chunk ChatStreamChunk
-			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-				// 跳过解析失败的行，继续处理后续数据
+			if err := json.Unmarshal([]byte(event.Data), &chunk); err != nil {
 				continue
 			}
-
 			chunkCh <- &chunk
-		}
-
-		if err := scanner.Err(); err != nil {
-			errCh <- fmt.Errorf("scanner error: %w", err)
 		}
 	}()
 
 	return chunkCh, errCh
 }
 
-// ListModels 获取可用模型列表
-func (p *OpenAIProvider) ListModels(ctx context.Context) ([]ModelInfo, error) {
-	url := p.baseURL + "/v1/models"
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	p.setHeaders(httpReq)
-
-	resp, err := p.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("http request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("openai api error: status=%d body=%s", resp.StatusCode, string(respBody))
-	}
-
-	var result struct {
-		Data []ModelInfo `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
-	}
-
-	return result.Data, nil
-}
-
-// setHeaders 设置通用请求头
-func (p *OpenAIProvider) setHeaders(req *http.Request) {
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+p.apiKey)
-}
+// ListModels 获取可用模型列表（继承自 BaseProvider）

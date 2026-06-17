@@ -1,14 +1,8 @@
 package handlers
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
-	"log/slog"
-	"net/http"
-	"time"
-
 	"llm-gateway/internal/model"
+	"llm-gateway/internal/provider"
 	"llm-gateway/internal/service"
 	"llm-gateway/internal/web/common"
 
@@ -27,6 +21,7 @@ func (h *ProviderHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/providers/add", h.AddProvider)
 	g.POST("/providers/update", h.UpdateProvider)
 	g.POST("/providers/remove", h.RemoveProvider)
+	g.POST("/providers/fetch-models", h.FetchProviderModels)
 }
 
 // SearchProviders 搜索 Provider 列表
@@ -111,42 +106,80 @@ func (h *ProviderHandler) FetchProvider(c echo.Context) error {
 
 // AddProvider 新增 Provider
 func (h *ProviderHandler) AddProvider(c echo.Context) error {
-	input := &model.Provider{}
-	if err := c.Bind(input); err != nil {
+	input, err := h.GetJSON(c)
+	if err != nil {
 		return err
 	}
-	if err := validation.ValidateStruct(input,
-		validation.Field(&input.Title, validation.Required),
-		validation.Field(&input.BaseURL, validation.Required),
-		validation.Field(&input.APIKey, validation.Required),
+
+	// 构建 Provider 实体
+	p := &model.Provider{
+		Title:            input.Get("title").String(),
+		BaseURL:          input.Get("baseUrl").String(),
+		APIKey:           input.Get("apiKey").String(),
+		SupportOpenAI:    input.Get("supportOpenai").Bool(),
+		OpenAIBaseURL:    input.Get("openaiBaseUrl").String(),
+		SupportAnthropic: input.Get("supportAnthropic").Bool(),
+		AnthropicBaseURL: input.Get("anthropicBaseUrl").String(),
+		PreferredAPI:     input.Get("preferredApi").String(),
+		IsActive:         input.Get("isActive").Bool(),
+	}
+
+	if err := validation.ValidateStruct(p,
+		validation.Field(&p.Title, validation.Required),
+		validation.Field(&p.BaseURL, validation.Required),
+		validation.Field(&p.APIKey, validation.Required),
 	); err != nil {
 		return h.Error(-11, err.Error())
 	}
 
 	// 唯一性检查
 	var exist int64
-	h.DB.Model(&model.Provider{}).Where("title = ?", input.Title).Count(&exist)
+	h.DB.Model(&model.Provider{}).Where("title = ?", p.Title).Count(&exist)
 	if exist > 0 {
 		return h.Error(-12, "Provider 名称已存在")
 	}
 
 	// 必须支持至少一种协议
-	if !input.SupportOpenAI && !input.SupportAnthropic {
+	if !p.SupportOpenAI && !p.SupportAnthropic {
 		return h.Error(-11, "请至少支持一种协议（OpenAI 或 Anthropic）")
 	}
 
 	// 设置默认值
-	if input.PreferredAPI == "" {
-		input.PreferredAPI = "openai"
+	if p.PreferredAPI == "" {
+		p.PreferredAPI = "openai"
 	}
-	input.IsActive = true
+	p.IsActive = true
 
-	if err := h.DB.Create(input).Error; err != nil {
+	// 提取 models 字段
+	var modelNames []string
+	if modelsArr := input.Get("models"); modelsArr.Exists() && modelsArr.IsArray() {
+		for _, v := range modelsArr.Array() {
+			name := v.String()
+			if name != "" {
+				modelNames = append(modelNames, name)
+			}
+		}
+	}
+
+	if err := h.DB.Create(p).Error; err != nil {
 		return h.Error(-21, err.Error())
 	}
 
+	// 批量创建 ProviderModel
+	if len(modelNames) > 0 {
+		models := make([]model.ProviderModel, 0, len(modelNames))
+		for _, name := range modelNames {
+			models = append(models, model.ProviderModel{
+				ProviderID: p.ProviderID,
+				Name:       name,
+				IsActive:   true,
+			})
+		}
+		h.DB.Create(&models)
+	}
+
 	_ = h.ProviderSvc.ReloadProviders()
-	return common.NewData(input)
+	return common.NewData(p)
 }
 
 // UpdateProvider 更新 Provider
@@ -237,14 +270,60 @@ func (h *ProviderHandler) UpdateProvider(c echo.Context) error {
 		}
 	}
 
-	// 空更新检查
-	if len(newState) == 0 {
+	// 空更新检查（models 字段单独处理）
+	if len(newState) == 0 && !input.Get("models").Exists() {
 		return h.Success()
 	}
 
-	// 执行更新
-	if err := h.DB.Model(&model.Provider{}).Where("provider_id = ?", providerID.Uint()).Updates(newState).Error; err != nil {
-		return h.Error(-22, err.Error())
+	// 执行 Provider 字段更新
+	if len(newState) > 0 {
+		if err := h.DB.Model(&model.Provider{}).Where("provider_id = ?", providerID.Uint()).Updates(newState).Error; err != nil {
+			return h.Error(-22, err.Error())
+		}
+	}
+
+	// 同步 models（reconcile）
+	if modelsArr := input.Get("models"); modelsArr.Exists() && modelsArr.IsArray() {
+		var newNames []string
+		for _, v := range modelsArr.Array() {
+			name := v.String()
+			if name != "" {
+				newNames = append(newNames, name)
+			}
+		}
+
+		// 查询现有模型
+		var existing []model.ProviderModel
+		h.DB.Where("provider_id = ?", providerID.Uint()).Find(&existing)
+
+		existingMap := make(map[string]uint, len(existing))
+		for _, m := range existing {
+			existingMap[m.Name] = m.ModelID
+		}
+
+		newSet := make(map[string]bool, len(newNames))
+		for _, name := range newNames {
+			newSet[name] = true
+		}
+
+		// 删除：DB 有但新列表没有的
+		for name, modelID := range existingMap {
+			if !newSet[name] {
+				h.DB.Where("upstream_model_id = ?", modelID).Delete(&model.UserModel{})
+				h.DB.Delete(&model.ProviderModel{}, modelID)
+			}
+		}
+
+		// 新增：新列表有但 DB 没有的
+		for _, name := range newNames {
+			if _, exists := existingMap[name]; !exists {
+				h.DB.Create(&model.ProviderModel{
+					ProviderID: uint(providerID.Uint()),
+					Name:       name,
+					IsActive:   true,
+				})
+			}
+		}
 	}
 
 	_ = h.ProviderSvc.ReloadProviders()
@@ -269,7 +348,7 @@ func (h *ProviderHandler) RemoveProvider(c echo.Context) error {
 	var modelIDs []uint
 	h.DB.Model(&model.ProviderModel{}).Where("provider_id = ?", input.ProviderID).Pluck("model_id", &modelIDs)
 	if len(modelIDs) > 0 {
-		h.DB.Where("upstream_model_id IN ?", modelIDs).Delete(&model.DownstreamModel{})
+		h.DB.Where("upstream_model_id IN ?", modelIDs).Delete(&model.UserModel{})
 		h.DB.Where("provider_id = ?", input.ProviderID).Delete(&model.ProviderModel{})
 	}
 
@@ -281,16 +360,11 @@ func (h *ProviderHandler) RemoveProvider(c echo.Context) error {
 	return h.Success()
 }
 
-type fetchedModel struct {
-	ID string `json:"id"`
-}
-
 // FetchProviderModels 获取上游 Provider 的模型列表
 func (h *ProviderHandler) FetchProviderModels(c echo.Context) error {
 	input := &struct {
 		BaseURL string `json:"baseUrl"`
 		APIKey  string `json:"apiKey"`
-		APIType string `json:"apiType"`
 	}{}
 	if err := c.Bind(input); err != nil {
 		return h.Error(-11, "请求参数错误")
@@ -299,96 +373,10 @@ func (h *ProviderHandler) FetchProviderModels(c echo.Context) error {
 		return h.Error(-11, "Base URL 不能为空")
 	}
 
-	// Anthropic 没有标准的 /v1/models 端点
-	if input.APIType == "anthropic" {
-		return common.NewData([]fetchedModel{})
-	}
-
-	baseURL := input.BaseURL
-	for len(baseURL) > 0 && baseURL[len(baseURL)-1] == '/' {
-		baseURL = baseURL[:len(baseURL)-1]
-	}
-	modelsURL := baseURL + "/v1/models"
-
-	httpReq, err := http.NewRequest("GET", modelsURL, nil)
+	p := provider.NewOpenAIProvider("_fetch", input.BaseURL, input.APIKey)
+	models, err := p.ListModels(c.Request().Context())
 	if err != nil {
-		return h.Error(-21, "创建请求失败")
+		return h.Error(-22, err.Error())
 	}
-	if input.APIKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+input.APIKey)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return h.Error(-22, fmt.Sprintf("请求上游失败: %v", err))
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return h.Error(-23, fmt.Sprintf("上游返回 %d: %s", resp.StatusCode, truncateStr(string(body), 512)))
-	}
-
-	var result struct {
-		Data []fetchedModel `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return h.Error(-24, "解析响应失败")
-	}
-
-	return common.NewData(result.Data)
-}
-
-// BatchImportModels 批量导入模型
-func (h *ProviderHandler) BatchImportModels(c echo.Context) error {
-	input := &struct {
-		ProviderID uint     `json:"providerId"`
-		ModelNames []string `json:"modelNames"`
-	}{}
-	if err := c.Bind(input); err != nil {
-		return h.Error(-11, "请求参数错误")
-	}
-	if input.ProviderID == 0 || len(input.ModelNames) == 0 {
-		return h.Error(-11, "参数不完整")
-	}
-
-	// 检查 Provider 是否存在
-	var p model.Provider
-	if err := h.DB.First(&p, input.ProviderID).Error; err != nil {
-		return h.Error(-24, "Provider 不存在")
-	}
-
-	// 获取已存在的模型名称
-	var existingNames []string
-	h.DB.Model(&model.ProviderModel{}).Where("provider_id = ?", input.ProviderID).Pluck("name", &existingNames)
-	existingSet := make(map[string]bool, len(existingNames))
-	for _, name := range existingNames {
-		existingSet[name] = true
-	}
-
-	// 批量创建
-	created := 0
-	skipped := 0
-	for _, name := range input.ModelNames {
-		if existingSet[name] {
-			skipped++
-			continue
-		}
-		m := model.ProviderModel{
-			ProviderID: input.ProviderID,
-			Name:       name,
-			APIType:    model.APIType(p.PreferredAPI),
-			IsActive:   true,
-		}
-		if err := h.DB.Create(&m).Error; err != nil {
-			slog.Warn("create model", "name", name, "error", err)
-			continue
-		}
-		created++
-	}
-
-	_ = h.ProviderSvc.ReloadProviders()
-	return common.NewData(map[string]int{"created": created, "skipped": skipped})
+	return common.NewDataSet(models, int64(len(models)))
 }

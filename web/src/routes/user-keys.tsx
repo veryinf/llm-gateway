@@ -10,7 +10,7 @@ import { apiKeyService, type APIKey } from '@/services/api-key';
 import { useAllUsers } from '@/services/user';
 import { CopyButton } from '@/components/easy-button';
 
-export const Route = createFileRoute('/keys')({
+export const Route = createFileRoute('/user-keys')({
   validateSearch: (search: Record<string, unknown>) => ({
     uid: Array.isArray(search.uid) ? search.uid : undefined,
   }),

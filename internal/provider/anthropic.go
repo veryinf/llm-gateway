@@ -1,15 +1,11 @@
 package provider
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -44,13 +40,13 @@ type AnthropicUsage struct {
 
 // AnthropicResponse Anthropic API 响应
 type AnthropicResponse struct {
-	ID           string                  `json:"id"`
-	Type         string                  `json:"type"`
-	Role         string                  `json:"role"`
-	Model        string                  `json:"model"`
-	Content      []AnthropicContentBlock `json:"content"`
-	StopReason   string                  `json:"stop_reason,omitempty"`
-	Usage        AnthropicUsage          `json:"usage"`
+	ID         string                  `json:"id"`
+	Type       string                  `json:"type"`
+	Role       string                  `json:"role"`
+	Model      string                  `json:"model"`
+	Content    []AnthropicContentBlock `json:"content"`
+	StopReason string                  `json:"stop_reason,omitempty"`
+	Usage      AnthropicUsage          `json:"usage"`
 }
 
 // AnthropicStreamEvent Anthropic SSE 事件
@@ -64,9 +60,9 @@ type AnthropicStreamEvent struct {
 }
 
 type AnthropicDelta struct {
-	Type         string `json:"type,omitempty"`
-	Text         string `json:"text,omitempty"`
-	StopReason   string `json:"stop_reason,omitempty"`
+	Type       string `json:"type,omitempty"`
+	Text       string `json:"text,omitempty"`
+	StopReason string `json:"stop_reason,omitempty"`
 }
 
 type AnthropicStreamMessage struct {
@@ -75,41 +71,29 @@ type AnthropicStreamMessage struct {
 
 // AnthropicProvider Anthropic 原生 API 适配器
 type AnthropicProvider struct {
-	name       string
-	baseURL    string
-	apiKey     string
-	httpClient *http.Client
+	BaseProvider
 }
 
+// NewAnthropicProvider 创建 Anthropic Provider
 func NewAnthropicProvider(name, baseURL, apiKey string) *AnthropicProvider {
-	baseURL = strings.TrimRight(baseURL, "/")
 	return &AnthropicProvider{
-		name:    name,
-		baseURL: baseURL,
-		apiKey:  apiKey,
-		httpClient: &http.Client{
-			Transport: &http.Transport{
-				DialContext: (&net.Dialer{
-					Timeout:   10 * time.Second,
-					KeepAlive: 30 * time.Second,
-				}).DialContext,
-				TLSHandshakeTimeout:   10 * time.Second,
-				ResponseHeaderTimeout: 30 * time.Second,
-				MaxIdleConns:          100,
-				MaxIdleConnsPerHost:   20,
-				IdleConnTimeout:       90 * time.Second,
-			},
-		},
+		BaseProvider: NewBaseProvider(name, baseURL, apiKey),
 	}
 }
 
-func (p *AnthropicProvider) ID() string   { return p.name }
-func (p *AnthropicProvider) Type() string  { return "anthropic" }
+func (p *AnthropicProvider) Type() string { return "anthropic" }
+
+// SetHeaders 覆盖 BaseProvider 的请求头设置
+func (p *AnthropicProvider) SetHeaders(req *http.Request) {
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", p.APIKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+}
 
 // ChatCompletion 将 OpenAI 格式请求转为 Anthropic 格式，再转回 OpenAI 格式响应
 func (p *AnthropicProvider) ChatCompletion(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {
 	anthReq := p.convertToAnthropic(req)
-	anthResp, err := p.sendAnthropicRequest(ctx, anthReq, false)
+	anthResp, err := p.sendAnthropicRequest(ctx, anthReq)
 	if err != nil {
 		return nil, err
 	}
@@ -134,16 +118,16 @@ func (p *AnthropicProvider) ChatCompletionStream(ctx context.Context, req *ChatR
 			return
 		}
 
-		url := p.baseURL + "/v1/messages"
+		url := p.BaseURL + "/v1/messages"
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 		if err != nil {
 			errCh <- fmt.Errorf("create request: %w", err)
 			return
 		}
-		p.setHeaders(httpReq)
+		p.SetHeaders(httpReq)
 		httpReq.Header.Set("Accept", "text/event-stream")
 
-		resp, err := p.httpClient.Do(httpReq)
+		resp, err := p.HTTPClient.Do(httpReq)
 		if err != nil {
 			errCh <- fmt.Errorf("http request: %w", err)
 			return
@@ -151,71 +135,55 @@ func (p *AnthropicProvider) ChatCompletionStream(ctx context.Context, req *ChatR
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			respBody, _ := io.ReadAll(resp.Body)
-			errCh <- fmt.Errorf("anthropic api error: status=%d body=%s", resp.StatusCode, string(respBody))
+			errCh <- handleHTTPError(resp, p.Type())
 			return
 		}
 
-		scanner := bufio.NewScanner(resp.Body)
-		scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 		chunkIndex := 0
-		var contentBuilder strings.Builder
-
-		for scanner.Scan() {
-			select {
-			case <-ctx.Done():
-				errCh <- ctx.Err()
-				return
-			default:
-			}
-
-			line := strings.TrimSpace(scanner.Text())
-			if line == "" || !strings.HasPrefix(line, "data:") {
+		for event := range ReadSSE(ctx, resp.Body) {
+			var anthEvent AnthropicStreamEvent
+			if err := json.Unmarshal([]byte(event.Data), &anthEvent); err != nil {
 				continue
 			}
 
-			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-
-			var event AnthropicStreamEvent
-			if err := json.Unmarshal([]byte(data), &event); err != nil {
-				continue
-			}
-
-			switch event.Type {
+			switch anthEvent.Type {
 			case "content_block_delta":
-				if event.Delta != nil && event.Delta.Text != "" {
-					contentBuilder.WriteString(event.Delta.Text)
-			chunkCh <- &ChatStreamChunk{
-				ID:      "anthropic-" + fmt.Sprintf("%d", chunkIndex),
-				Object:  "chat.completion.chunk",
-				Created: time.Now().Unix(),
-				Model:   req.Model,
-				Choices: []struct {
-					Index        int             `json:"index"`
-					Delta        struct {
-						Role      string          `json:"role,omitempty"`
-						Content   string          `json:"content,omitempty"`
-						ToolCalls json.RawMessage `json:"tool_calls,omitempty"`
-					} `json:"delta"`
-					FinishReason string `json:"finish_reason,omitempty"`
-				}{
-					{
-						Index: 0,
-						Delta: struct {
-							Role      string          `json:"role,omitempty"`
-							Content   string          `json:"content,omitempty"`
-							ToolCalls json.RawMessage `json:"tool_calls,omitempty"`
-						}{Content: event.Delta.Text},
-					},
-				},
-			}
+				if anthEvent.Delta != nil && anthEvent.Delta.Text != "" {
+					chunkCh <- &ChatStreamChunk{
+						ID:      "anthropic-" + fmt.Sprintf("%d", chunkIndex),
+						Object:  "chat.completion.chunk",
+						Created: time.Now().Unix(),
+						Model:   req.Model,
+						Choices: []struct {
+							Index int `json:"index"`
+							Delta struct {
+								Role      string          `json:"role,omitempty"`
+								Content   string          `json:"content,omitempty"`
+								ToolCalls json.RawMessage `json:"tool_calls,omitempty"`
+							} `json:"delta"`
+							FinishReason string `json:"finish_reason,omitempty"`
+						}{
+							{Index: 0, Delta: struct {
+								Role      string          `json:"role,omitempty"`
+								Content   string          `json:"content,omitempty"`
+								ToolCalls json.RawMessage `json:"tool_calls,omitempty"`
+							}{Content: anthEvent.Delta.Text}},
+						},
+					}
 					chunkIndex++
 				}
-
 			case "message_delta":
 				finishReason := ""
-				if event.Delta != nil {
-					finishReason = event.Delta.StopReason
+				if anthEvent.Delta != nil {
+					finishReason = anthEvent.Delta.StopReason
+				}
+				var usage *ChatUsage
+				if anthEvent.Usage != nil {
+					usage = &ChatUsage{
+						PromptTokens:     anthEvent.Usage.InputTokens,
+						CompletionTokens: anthEvent.Usage.OutputTokens,
+						TotalTokens:      anthEvent.Usage.InputTokens + anthEvent.Usage.OutputTokens,
+					}
 				}
 				chunkCh <- &ChatStreamChunk{
 					ID:      "anthropic-" + fmt.Sprintf("%d", chunkIndex),
@@ -223,8 +191,8 @@ func (p *AnthropicProvider) ChatCompletionStream(ctx context.Context, req *ChatR
 					Created: time.Now().Unix(),
 					Model:   req.Model,
 					Choices: []struct {
-						Index        int             `json:"index"`
-						Delta        struct {
+						Index int `json:"index"`
+						Delta struct {
 							Role      string          `json:"role,omitempty"`
 							Content   string          `json:"content,omitempty"`
 							ToolCalls json.RawMessage `json:"tool_calls,omitempty"`
@@ -233,58 +201,16 @@ func (p *AnthropicProvider) ChatCompletionStream(ctx context.Context, req *ChatR
 					}{
 						{Index: 0, FinishReason: finishReason},
 					},
-					Usage: &ChatUsage{
-						PromptTokens:     event.Usage.InputTokens,
-						CompletionTokens: event.Usage.OutputTokens,
-						TotalTokens:      event.Usage.InputTokens + event.Usage.OutputTokens,
-					},
+					Usage: usage,
 				}
 			}
-		}
-
-		if err := scanner.Err(); err != nil {
-			errCh <- fmt.Errorf("scanner error: %w", err)
 		}
 	}()
 
 	return chunkCh, errCh
 }
 
-// ListModels 获取模型列表 (尝试 Anthropic 格式)
-func (p *AnthropicProvider) ListModels(ctx context.Context) ([]ModelInfo, error) {
-	url := p.baseURL + "/v1/models"
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	p.setHeaders(httpReq)
-
-	resp, err := p.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("http request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("anthropic api error: status=%d body=%s", resp.StatusCode, string(respBody))
-	}
-
-	var result struct {
-		Data []ModelInfo `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
-	}
-
-	return result.Data, nil
-}
-
-func (p *AnthropicProvider) setHeaders(req *http.Request) {
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", p.apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
-}
+// ListModels 获取模型列表（继承自 BaseProvider，使用 Anthropic SetHeaders）
 
 // convertToAnthropic 将 OpenAI 格式转为 Anthropic 格式
 func (p *AnthropicProvider) convertToAnthropic(req *ChatRequest) *AnthropicRequest {
@@ -294,7 +220,6 @@ func (p *AnthropicProvider) convertToAnthropic(req *ChatRequest) *AnthropicReque
 		Temperature: req.Temperature,
 		TopP:        req.TopP,
 	}
-
 	for _, msg := range req.Messages {
 		if msg.Role == "system" {
 			anth.System = string(msg.Content)
@@ -305,7 +230,6 @@ func (p *AnthropicProvider) convertToAnthropic(req *ChatRequest) *AnthropicReque
 			})
 		}
 	}
-
 	return anth
 }
 
@@ -315,7 +239,6 @@ func (p *AnthropicProvider) convertToOpenAI(modelName string, anth *AnthropicRes
 	if len(anth.Content) > 0 {
 		content = anth.Content[0].Text
 	}
-
 	return &ChatResponse{
 		ID:      anth.ID,
 		Object:  "chat.completion",
@@ -339,34 +262,32 @@ func (p *AnthropicProvider) convertToOpenAI(modelName string, anth *AnthropicRes
 }
 
 // sendAnthropicRequest 发送 Anthropic API 请求
-func (p *AnthropicProvider) sendAnthropicRequest(ctx context.Context, req *AnthropicRequest, stream bool) (*AnthropicResponse, error) {
+func (p *AnthropicProvider) sendAnthropicRequest(ctx context.Context, req *AnthropicRequest) (*AnthropicResponse, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	url := p.baseURL + "/v1/messages"
+	url := p.BaseURL + "/v1/messages"
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
-	p.setHeaders(httpReq)
+	p.SetHeaders(httpReq)
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := p.HTTPClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("http request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("anthropic api error: status=%d body=%s", resp.StatusCode, string(respBody))
+		return nil, handleHTTPError(resp, p.Type())
 	}
 
 	var anthResp AnthropicResponse
-	if err := json.NewDecoder(resp.Body).Decode(&anthResp); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
+	if err := decodeJSON(resp, &anthResp); err != nil {
+		return nil, err
 	}
-
 	return &anthResp, nil
 }

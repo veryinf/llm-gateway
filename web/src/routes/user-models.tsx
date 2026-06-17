@@ -4,24 +4,24 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { Page, type PageInformation } from '@/components/full-page';
 import { FormFieldInput, FormFieldSelect, FormFieldSwitch, FormFieldTextarea } from '@/components/form';
 import { Badge } from '@/components/ui/badge';
-import { downstreamModelService, type DownstreamModel } from '@/services/downstream-model';
-import { modelService, type Model } from '@/services/model';
+import { userModelService, type UserModel } from '@/services/user-model';
+import { providerModelService, type ProviderModel } from '@/services/provider-model';
 import { providerService, type Provider } from '@/services/provider';
 import { useBreadcrumb } from '@/hooks/use-breadcrumb';
 import { useQuery } from '@tanstack/react-query';
 
-export const Route = createFileRoute('/downstream-models')({
-  component: DownstreamModelsPage,
+export const Route = createFileRoute('/user-models')({
+  component: UserModelsPage,
 });
 
 const pageInformation: PageInformation = {
-  name: 'downstream-models',
+  name: 'user-models',
   entityName: '模型',
   page: { title: '调用端模型', description: '配置暴露给用户的模型名称及其上游映射' },
   breadcrumbs: [{ title: '下游' }, { title: '调用端模型' }],
 };
 
-function DownstreamModelsPage() {
+function UserModelsPage() {
   const { setBreadcrumbs } = useBreadcrumb();
 
   useEffect(() => {
@@ -30,7 +30,7 @@ function DownstreamModelsPage() {
 
   const { data: upstreamModels } = useQuery({
     queryKey: ['provider-models-list'],
-    queryFn: () => modelService.search({}),
+    queryFn: () => providerModelService.search({}),
   });
 
   const { data: providers } = useQuery({
@@ -47,16 +47,16 @@ function DownstreamModelsPage() {
   }, [providers]);
 
   const upstreamModelOptions = useMemo(() => {
-    return (upstreamModels?.dataSet ?? []).map((m: Model) => {
+    return (upstreamModels?.dataSet ?? []).map((m: ProviderModel) => {
       const provider = providerMap[m.providerId];
       return {
-        label: `${m.displayName || m.name} (${provider?.title ?? '未知'})`,
+        label: `${m.displayName || m.name} (${provider?.title ?? `未知`})`,
         value: String(m.modelId),
       };
     });
   }, [upstreamModels, providerMap]);
 
-  const columns: ColumnDef<DownstreamModel, any>[] = [
+  const columns: ColumnDef<UserModel, any>[] = [
     {
       accessorKey: 'name',
       header: '模型名称',
@@ -105,10 +105,10 @@ function DownstreamModelsPage() {
   ];
 
   return (
-    <Page<DownstreamModel>
+    <Page<UserModel>
       infomation={pageInformation}
       columns={columns}
-      service={downstreamModelService}
+      service={userModelService}
       options={{ showSelectColumn: false }}
       formInitialValue={(_type, entity) => ({
         id: 0,

@@ -4,7 +4,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { Page, type PageInformation } from '@/components/full-page';
 import { FormFieldInput, FormFieldSelect, FormFieldSwitch, FormFieldTextarea } from '@/components/form';
 import { Badge } from '@/components/ui/badge';
-import { modelService, type Model } from '@/services/model';
+import { providerModelService, type ProviderModel } from '@/services/provider-model';
 import { providerService, type Provider } from '@/services/provider';
 import { useBreadcrumb } from '@/hooks/use-breadcrumb';
 import { useQuery } from '@tanstack/react-query';
@@ -58,15 +58,15 @@ function ModelsPage() {
     return providerFilter === 'all' ? 'models' : `models-p${providerFilter}`;
   }, [providerFilter]);
 
-  const filteredService = useMemo<API.Service<Model>>(
+  const filteredService = useMemo<API.Service<ProviderModel>>(
     () => ({
-      ...modelService,
+      ...providerModelService,
       async search(params) {
         const filters = [...(params.filters ?? [])];
         if (providerFilter !== 'all') {
           filters.push({ field: 'providerId', value: Number(providerFilter) });
         }
-        const res = await request.post<API.DataSet<Model>>('/provider-models/search', {
+        const res = await request.post<API.DataSet<ProviderModel>>('/provider-models/search', {
           ...params,
           filters,
         });
@@ -84,7 +84,7 @@ function ModelsPage() {
     [dynamicPageName],
   );
 
-  const columns: ColumnDef<Model, any>[] = [
+  const columns: ColumnDef<ProviderModel, any>[] = [
     {
       accessorKey: 'name',
       header: '模型名称',
@@ -150,7 +150,7 @@ function ModelsPage() {
     },
   ];
 
-  const formInitialValue = (_type: string, entity?: Model) => ({
+  const formInitialValue = (_type: string, entity?: ProviderModel) => ({
     modelId: entity?.modelId ?? 0,
     providerId: entity?.providerId ?? 0,
     name: entity?.name ?? '',
@@ -166,7 +166,7 @@ function ModelsPage() {
     isActive: entity?.isActive ?? true,
   });
 
-  const renderForm = (form: any, _entity?: Model) => (
+  const renderForm = (form: any, _entity?: ProviderModel) => (
     <div className="flex flex-col gap-4 max-h-[70vh] overflow-y-auto pr-2">
       <div className="text-sm font-medium text-muted-foreground">基础信息</div>
       <FormFieldInput form={form} name="name" title="模型名称" required placeholder="例如: gpt-4o, claude-3-opus" />
@@ -218,7 +218,7 @@ function ModelsPage() {
           </div>
         </div>
       </div>
-      <Page<Model>
+      <Page<ProviderModel>
         infomation={dynamicPageInfo}
         columns={columns}
         service={filteredService}

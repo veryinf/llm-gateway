@@ -122,27 +122,7 @@ function UsersPage() {
         status: entity?.status ?? 'active',
         apiKeyCount: entity?.apiKeyCount ?? 0,
       })}
-      renderViewAdd={(form) => (
-        <div className="grid grid-cols-12 gap-4">
-          <FormFieldInput className="col-span-4" form={form} name="username" title="用户名" required placeholder="请输入用户名" />
-          <FormFieldInput className="col-span-4" form={form} name="password" title="密码" required placeholder="请输入密码" type="password" />
-          <FormFieldSelect
-            className="col-span-4"
-            form={form}
-            name="status"
-            title="状态"
-            options={[
-              { label: '启用', value: 'active' },
-              { label: '禁用', value: 'disabled' },
-            ]}
-          />
-          <FormFieldSelect className="col-span-4" form={form} name="role" title="角色" options={roleOptions} />
-          <FormFieldInput className="col-span-4" form={form} name="name" title="姓名" placeholder="请输入姓名" />
-          <FormFieldInput className="col-span-4" form={form} name="department" title="部门" placeholder="请输入部门" />
-          <FormFieldInput className="col-span-4" form={form} name="phone" title="手机号" placeholder="请输入手机号" />
-        </div>
-      )}
-      renderViewUpdate={(form, _entity) => (
+      renderViewForm={(form, _entity) => (
         <div className="grid grid-cols-12 gap-4">
           <FormFieldInput className="col-span-4" form={form} name="username" title="用户名" required />
           <FormFieldInput className="col-span-4" form={form} name="password" title="密码" placeholder="留空不修改" type="password" />

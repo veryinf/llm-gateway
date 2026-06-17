@@ -65,19 +65,24 @@ func (s *ProviderService) LoadProvidersFromDB() error {
 	for _, m := range upstreamModels {
 		for _, p := range providers {
 			if p.ProviderID == m.ProviderID {
-				adapterID := fmt.Sprintf("%s#%s", p.Title, m.APIType)
+				// 使用 provider 的 preferred_api 作为默认 api_type
+				apiType := p.PreferredAPI
+				if apiType == "" {
+					apiType = "openai"
+				}
+				adapterID := fmt.Sprintf("%s#%s", p.Title, apiType)
 				upstreamToAdapter[m.ModelID] = adapterID
 				break
 			}
 		}
 	}
 
-	var downstreamModels []model.DownstreamModel
-	if err := s.db.Where("is_active = ?", true).Find(&downstreamModels).Error; err != nil {
-		slog.Warn("list downstream models", "error", err)
+	var userModels []model.UserModel
+	if err := s.db.Where("is_active = ?", true).Find(&userModels).Error; err != nil {
+		slog.Warn("list user models", "error", err)
 	}
 
-	for _, dm := range downstreamModels {
+	for _, dm := range userModels {
 		adapterID, ok := upstreamToAdapter[dm.UpstreamModelID]
 		if !ok {
 			continue
@@ -87,8 +92,8 @@ func (s *ProviderService) LoadProvidersFromDB() error {
 
 	s.modelRouter.LoadModelMap(providerModels)
 
-	downstreamCount := len(downstreamModels)
-	slog.Info("loaded providers and downstream models", "providers", len(providers), "downstream_models", downstreamCount)
+	downstreamCount := len(userModels)
+	slog.Info("loaded providers and user models", "providers", len(providers), "user_models", downstreamCount)
 	return nil
 }
 

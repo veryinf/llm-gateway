@@ -50,7 +50,7 @@ func InitDB(dataDir string) (*gorm.DB, *sql.DB) {
 		&model.APIKey{},
 		&model.Provider{},
 		&model.ProviderModel{},
-		&model.DownstreamModel{},
+		&model.UserModel{},
 		&model.User{},
 	); err != nil {
 		slog.Error("failed to migrate application database", "error", err)

@@ -29,8 +29,8 @@ const menuSet = {
   ],
   downstream: [
     { title: '用户管理', url: '/users', icon: Users },
-    { title: 'API Key 管理', url: '/keys', icon: Key },
-    { title: '调用端模型', url: '/downstream-models', icon: Globe },
+    { title: 'API Key 管理', url: '/user-keys', icon: Key },
+    { title: '用户端模型', url: '/user-models', icon: Globe },
   ],
   routing: [
     { title: '模型路由', url: '/models', icon: Cpu },

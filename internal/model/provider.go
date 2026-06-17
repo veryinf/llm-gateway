@@ -24,7 +24,6 @@ type ProviderModel struct {
 	ModelID          uint    `json:"modelId" gorm:"primaryKey"`
 	ProviderID       uint    `json:"providerId" gorm:"index"`
 	Name             string  `json:"name"`
-	APIType          APIType `json:"apiType"`
 	DisplayName      string  `json:"displayName,omitempty"`
 	Description      string  `json:"description,omitempty"`
 	MaxContextTokens int64   `json:"maxContextTokens"`

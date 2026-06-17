@@ -4,7 +4,7 @@ import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '../ui/select';
 import { useField } from '@tanstack/react-form';
-import type React from 'react';
+import React from 'react';
 import type { EasyFieldApi, EasyFieldOptions, EasyFormApi } from './utils';
 import type { GroupOptionsItem, OptionsItem } from '@/lib';
 import { Combobox, ComboboxChip, ComboboxChips, ComboboxChipsInput, ComboboxContent, ComboboxEmpty, ComboboxItem, ComboboxList, ComboboxValue, useComboboxAnchor } from '../ui/combobox';
@@ -12,7 +12,8 @@ import { Checkbox } from '../ui/checkbox';
 import type { CheckedState } from '@radix-ui/react-checkbox';
 import { Switch } from '../ui/switch';
 import { Label } from '../ui/label';
-import { CirclePlus, CircleQuestionMark, RefreshCcw } from 'lucide-react';
+import { Badge } from '../ui/badge';
+import { CirclePlus, CircleQuestionMark, RefreshCcw, X } from 'lucide-react';
 import { EasyTooltip } from '../easy-tooltip';
 
 export type FormFieldProps<T extends any> = {
@@ -253,6 +254,60 @@ export function FormFieldCheckbox<T extends any = any>(props: FormFieldProps<T>)
           <div className="flex items-center space-x-2 h-9">
             <Checkbox id={field.name} aria-invalid={isInvalid} checked={field.state.value} onCheckedChange={(e) => field.handleChange(e)} />
             <Label htmlFor={field.name}>{props.title}</Label>
+          </div>
+        );
+      }}
+    </FormField>
+  );
+}
+
+export function FormFieldTagsInput<T extends any = any>(props: FormFieldProps<T>) {
+  const [inputValue, setInputValue] = React.useState('');
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  return (
+    <FormField {...props}>
+      {(field) => {
+        const tags: string[] = (field.state.value as string[] | undefined) ?? [];
+
+        function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            const tag = inputValue.trim();
+            if (tag && !tags.includes(tag)) {
+              field.handleChange([...tags, tag] as any);
+              setInputValue('');
+            }
+          } else if (e.key === 'Backspace' && inputValue === '' && tags.length > 0) {
+            field.handleChange(tags.slice(0, -1) as any);
+          }
+        }
+
+        function removeTag(index: number) {
+          field.handleChange(tags.filter((_, i) => i !== index) as any);
+        }
+
+        return (
+          <div
+            className="flex flex-wrap gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+            onClick={() => inputRef.current?.focus()}
+          >
+            {tags.map((tag, index) => (
+              <Badge key={index} variant="secondary" className="gap-1 pr-1">
+                <span className="max-w-[200px] truncate">{tag}</span>
+                <button type="button" onClick={(e) => { e.stopPropagation(); removeTag(index); }} className="ml-0.5 rounded-full outline-none ring-offset-background hover:bg-destructive/20">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+            <Input
+              ref={inputRef}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={tags.length === 0 ? props.placeholder : ''}
+              className="h-6 flex-1 border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+            />
           </div>
         );
       }}

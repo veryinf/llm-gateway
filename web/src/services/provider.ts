@@ -1,5 +1,6 @@
-import { request } from '@/lib';
+import { request, type OptionsItem } from '@/lib';
 import type { API } from '@/typings';
+import { useQuery } from '@tanstack/react-query';
 
 export interface Provider {
   providerId: number;
@@ -13,6 +14,21 @@ export interface Provider {
   preferredApi: string;
   isActive: boolean;
   modelCount?: number;
+}
+
+export function useAllProviders() {
+  const { data: allProviders = [], ...rest } = useQuery<Provider[]>({
+    queryKey: ['all-providers'],
+    queryFn: async () => {
+      const result = await providerService.search({ pagination: { pageIndex: 1, pageSize: 10000 } });
+      return result.dataSet ?? [];
+    },
+  });
+  const allProviderOptions: OptionsItem[] = allProviders.map(p => ({
+    label: p.title, value: p.providerId
+  }));
+
+  return { allProviders, allProviderOptions, ...rest };
 }
 
 export const providerService: API.Service<Provider> = {
@@ -45,19 +61,10 @@ export const providerService: API.Service<Provider> = {
   },
 };
 
-export async function fetchProviderModels(baseUrl: string, apiKey: string, apiType: string): Promise<{ id: string }[]> {
+export async function fetchProviderModels(baseUrl: string, apiKey: string): Promise<{ id: string }[]> {
   const res = await request.post<API.DataSet<{ id: string }>>('/providers/fetch-models', {
     baseUrl,
     apiKey,
-    apiType,
   });
   return res.data.dataSet ?? [];
-}
-
-export async function batchImportProviderModels(providerId: number, modelNames: string[]): Promise<{ created: number; skipped: number }> {
-  const res = await request.post<API.Data<{ created: number; skipped: number }>>(
-    '/providers/batch-import-models',
-    { providerId, modelNames },
-  );
-  return res.data.data!;
 }

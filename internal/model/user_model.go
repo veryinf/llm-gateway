@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-type DownstreamModel struct {
+type UserModel struct {
 	ID              uint      `gorm:"primaryKey" json:"id"`
 	Name            string    `gorm:"uniqueIndex;size:128;not null" json:"name"`
 	DisplayName     string    `gorm:"size:128;default:''" json:"display_name"`

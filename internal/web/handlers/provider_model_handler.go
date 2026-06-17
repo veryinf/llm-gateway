@@ -29,7 +29,7 @@ func (h *ProviderModelHandler) SearchProviderModels(c echo.Context) error {
 		return err
 	}
 
-	query := h.DB.Model(&model.ProviderModel{}).Preload("Provider").Order("model_id DESC")
+	query := h.DB.Model(&model.ProviderModel{}).Order("model_id DESC")
 
 	// 关键词搜索
 	if input.Kw != "" {
@@ -42,8 +42,6 @@ func (h *ProviderModelHandler) SearchProviderModels(c echo.Context) error {
 		switch filter.Field {
 		case "providerId":
 			query = query.Where("provider_id = ?", filter.Value)
-		case "apiType":
-			query = query.Where("api_type = ?", filter.Value)
 		case "isActive":
 			query = query.Where("is_active = ?", filter.Value)
 		}
@@ -74,7 +72,7 @@ func (h *ProviderModelHandler) FetchProviderModel(c echo.Context) error {
 	}
 
 	var m model.ProviderModel
-	if err := h.DB.Preload("Provider").First(&m, input.ModelID).Error; err != nil {
+	if err := h.DB.First(&m, input.ModelID).Error; err != nil {
 		return h.Error(-24, "模型不存在")
 	}
 	return common.NewData(m)
@@ -124,6 +122,9 @@ func (h *ProviderModelHandler) UpdateProviderModel(c echo.Context) error {
 	// 逐字段提取，构建更新 map
 	newState := map[string]any{}
 
+	if input.Get("providerId").Exists() {
+		newState["provider_id"] = input.Get("providerId").Uint()
+	}
 	if input.Get("name").Exists() {
 		newState["name"] = input.Get("name").String()
 	}
@@ -132,9 +133,6 @@ func (h *ProviderModelHandler) UpdateProviderModel(c echo.Context) error {
 	}
 	if input.Get("description").Exists() {
 		newState["description"] = input.Get("description").String()
-	}
-	if input.Get("apiType").Exists() {
-		newState["api_type"] = input.Get("apiType").String()
 	}
 	if input.Get("maxContextTokens").Exists() {
 		newState["max_context_tokens"] = input.Get("maxContextTokens").Int()
@@ -187,7 +185,7 @@ func (h *ProviderModelHandler) RemoveProviderModel(c echo.Context) error {
 	}
 
 	// 级联删除：先删关联的下游模型引用
-	h.DB.Where("upstream_model_id = ?", input.ModelID).Delete(&model.DownstreamModel{})
+	h.DB.Where("upstream_model_id = ?", input.ModelID).Delete(&model.UserModel{})
 
 	if err := h.DB.Delete(&model.ProviderModel{}, input.ModelID).Error; err != nil {
 		return h.Error(-23, err.Error())

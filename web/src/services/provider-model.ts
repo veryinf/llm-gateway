@@ -2,11 +2,10 @@ import { request } from '@/lib';
 import type { API } from '@/typings';
 import type { Provider } from './provider';
 
-export interface Model {
+export interface ProviderModel {
   modelId: number;
   providerId: number;
   name: string;
-  apiType: 'openai' | 'anthropic';
   displayName: string;
   description: string;
   maxContextTokens: number;
@@ -19,17 +18,17 @@ export interface Model {
   provider?: Provider;
 }
 
-export const modelService: API.Service<Model> = {
+export const providerModelService: API.Service<ProviderModel> = {
   primaryKey: (entity) => entity.modelId,
   title: (entity) => entity.displayName || entity.name,
 
   async search(params) {
-    const res = await request.post<API.DataSet<Model>>('/provider-models/search', params);
+    const res = await request.post<API.DataSet<ProviderModel>>('/provider-models/search', params);
     return res.data;
   },
 
   async fetch(modelId) {
-    const res = await request.post<API.Data<Model>>('/provider-models/fetch', { modelId });
+    const res = await request.post<API.Data<ProviderModel>>('/provider-models/fetch', { modelId });
     return res.data;
   },
 
@@ -48,3 +47,15 @@ export const modelService: API.Service<Model> = {
     return res.data;
   },
 };
+
+export async function searchProviderModels(
+  providerId: number,
+  params?: Omit<API.SearchParams, 'filters'> & { filters?: API.SearchParams['filters'] }
+): Promise<API.DataSet<ProviderModel>> {
+  const filters = [...(params?.filters ?? []), { field: 'providerId', value: providerId }];
+  const res = await request.post<API.DataSet<ProviderModel>>('/provider-models/search', {
+    ...params,
+    filters,
+  });
+  return res.data;
+}

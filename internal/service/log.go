@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"llm-gateway/internal/core"
+	"llm-gateway/internal/model"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -188,7 +189,7 @@ func (s *LogService) checkDateChangeLoop() {
 }
 
 func (s *LogService) cleanup() {
-	retention := int(GetConfig("system.log.retention").Int())
+	retention := int(GetConfig(model.ConfigKeyLogRetention).Int())
 	if retention < 1 {
 		retention = 7
 	}

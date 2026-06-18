@@ -11,6 +11,7 @@ type Provider struct {
 	AnthropicBaseURL string `json:"anthropicBaseUrl,omitempty"`
 	PreferredAPI     string `json:"preferredApi"`
 	IsActive         bool   `json:"isActive"`
+	IsDefault        bool   `json:"isDefault"`
 }
 
 type APIType string

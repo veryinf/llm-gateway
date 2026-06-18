@@ -120,6 +120,7 @@ func (h *ProviderHandler) AddProvider(c echo.Context) error {
 		AnthropicBaseURL: input.Get("anthropicBaseUrl").String(),
 		PreferredAPI:     input.Get("preferredApi").String(),
 		IsActive:         input.Get("isActive").Bool(),
+		IsDefault:        input.Get("isDefault").Bool(),
 	}
 
 	if err := validation.ValidateStruct(p,
@@ -243,6 +244,10 @@ func (h *ProviderHandler) UpdateProvider(c echo.Context) error {
 
 	if input.Get("isActive").Exists() {
 		newState["is_active"] = input.Get("isActive").Bool()
+	}
+
+	if input.Get("isDefault").Exists() {
+		newState["is_default"] = input.Get("isDefault").Bool()
 	}
 
 	// 校验：更新时也必须支持至少一种协议

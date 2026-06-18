@@ -1,18 +1,12 @@
 package handlers
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"time"
 
-	"llm-gateway/internal/model"
 	"llm-gateway/internal/provider"
-	"llm-gateway/internal/web/common"
 
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -25,93 +19,62 @@ func (h *AnthropicGatewayHandler) RegisterRoutes(g *echo.Group) {
 }
 
 func (h *AnthropicGatewayHandler) HandleMessages(c echo.Context) error {
-	traceID := uuid.New().String()
-	c.Set("trace_id", traceID)
-
-	reqBytes, _ := io.ReadAll(c.Request().Body)
-	c.Request().Body = io.NopCloser(bytes.NewReader(reqBytes))
-
 	var req provider.AnthropicRequest
-	if err := json.NewDecoder(bytes.NewReader(reqBytes)).Decode(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]interface{}{
-			"error": fmt.Sprintf("invalid request: %v", err),
-		})
+	gwCtx, err := h.prepareRequest(c, &req)
+	if err != nil {
+		return h.errorJSON(c, http.StatusBadRequest, err.Error())
 	}
 
 	llm, err := h.resolveProvider(req.Model)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]interface{}{
-			"error": "no provider available",
-		})
+		return h.errorJSON(c, http.StatusNotFound, "no provider available")
 	}
 
-	cc, ok := c.(*common.LeContext)
-	if !ok {
-		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
-			"error": "invalid context type",
-		})
-	}
-	var uid, kid uint
-	if cc.AuthUser != nil {
-		uid = cc.AuthUser.UID
-	}
-	if cc.UserKey != nil {
-		kid = cc.UserKey.KeyID
-	}
+	chatReq := h.buildChatRequest(&req)
 
-	startTime := time.Now()
-
-	systemMsg := ""
-	for _, msg := range req.Messages {
-		if msg.Role == "system" {
-			systemMsg = msg.Content
-		}
+	if req.Stream {
+		return h.handleStream(c, llm, chatReq, &req, gwCtx)
 	}
+	return h.handleNonStream(c, llm, chatReq, &req, gwCtx)
+}
+
+// buildChatRequest 将 AnthropicRequest 转换为统一的 ChatRequest
+func (h *AnthropicGatewayHandler) buildChatRequest(req *provider.AnthropicRequest) *provider.ChatRequest {
 	chatReq := &provider.ChatRequest{
 		Model:       req.Model,
 		Stream:      req.Stream,
 		MaxTokens:   req.MaxTokens,
 		Temperature: req.Temperature,
 		TopP:        req.TopP,
-		Messages:    []provider.ChatMessage{},
-	}
-	if systemMsg != "" {
-		chatReq.Messages = append(chatReq.Messages, provider.ChatMessage{
-			Role: "system", Content: provider.FlexContent(systemMsg),
-		})
-	}
-	for _, msg := range req.Messages {
-		if msg.Role != "system" {
-			chatReq.Messages = append(chatReq.Messages, provider.ChatMessage{
-				Role: msg.Role, Content: provider.FlexContent(msg.Content),
-			})
-		}
 	}
 
-	if !req.Stream {
-		return h.handleNonStream(c, llm, chatReq, req, traceID, uid, kid, startTime, reqBytes)
+	for _, msg := range req.Messages {
+		chatReq.Messages = append(chatReq.Messages, provider.ChatMessage{
+			Role:    msg.Role,
+			Content: provider.FlexContent(msg.Content),
+		})
 	}
-	return h.handleStream(c, llm, chatReq, req, traceID, uid, kid, startTime, reqBytes)
+	return chatReq
 }
 
 func (h *AnthropicGatewayHandler) handleNonStream(c echo.Context, llm provider.LLMProvider,
-	chatReq *provider.ChatRequest, req provider.AnthropicRequest,
-	traceID string, uid, kid uint, startTime time.Time, reqBytes []byte) error {
+	chatReq *provider.ChatRequest, req *provider.AnthropicRequest, gwCtx *gatewayContext) error {
 
 	resp, err := llm.ChatCompletion(c.Request().Context(), chatReq)
-	latencyMs := time.Since(startTime).Milliseconds()
+	latencyMs := gwCtx.Latency()
 
 	if err != nil {
-		h.recordRequest(traceID, uid, kid, llm.ID(), req.Model, false,
-			0, 0, 0, http.StatusBadGateway, err.Error(), latencyMs, c, reqBytes, nil, nil)
-		return c.JSON(http.StatusBadGateway, map[string]interface{}{
-			"error": err.Error(),
-		})
+		h.recordRequest(gwCtx.TraceID, gwCtx.UserID, gwCtx.APIKeyID, llm.ID(), req.Model, false,
+			0, 0, 0, http.StatusBadGateway, err.Error(), latencyMs, c, gwCtx.ReqBytes, nil, nil)
+		return h.errorJSON(c, http.StatusBadGateway, err.Error())
 	}
 
 	respBytes, _ := json.Marshal(resp)
+	h.recordRequest(gwCtx.TraceID, gwCtx.UserID, gwCtx.APIKeyID, llm.ID(), req.Model, false,
+		resp.Usage.PromptTokens, resp.Usage.CompletionTokens, resp.Usage.TotalTokens,
+		http.StatusOK, "", latencyMs, c, gwCtx.ReqBytes, respBytes, nil)
 
-	anthResp := provider.AnthropicResponse{
+	return c.JSON(http.StatusOK, provider.AnthropicResponse{
 		ID:    resp.ID,
 		Type:  "message",
 		Role:  "assistant",
@@ -123,113 +86,80 @@ func (h *AnthropicGatewayHandler) handleNonStream(c echo.Context, llm provider.L
 			InputTokens:  resp.Usage.PromptTokens,
 			OutputTokens: resp.Usage.CompletionTokens,
 		},
-	}
-
-	h.recordRequest(traceID, uid, kid, llm.ID(), req.Model, false,
-		resp.Usage.PromptTokens, resp.Usage.CompletionTokens, resp.Usage.TotalTokens,
-		http.StatusOK, "", latencyMs, c, reqBytes, respBytes, nil)
-	return c.JSON(http.StatusOK, anthResp)
+	})
 }
 
 func (h *AnthropicGatewayHandler) handleStream(c echo.Context, llm provider.LLMProvider,
-	chatReq *provider.ChatRequest, req provider.AnthropicRequest,
-	traceID string, uid, kid uint, startTime time.Time, reqBytes []byte) error {
+	chatReq *provider.ChatRequest, req *provider.AnthropicRequest, gwCtx *gatewayContext) error {
 
-	c.Response().Header().Set("Content-Type", "text/event-stream")
-	c.Response().Header().Set("Cache-Control", "no-cache")
-	c.Response().Header().Set("Connection", "keep-alive")
-
-	chunkCh, errCh := llm.ChatCompletionStream(c.Request().Context(), chatReq)
-	flusher, ok := c.Response().Writer.(http.Flusher)
-	if !ok {
-		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
-			"error": "streaming not supported",
-		})
+	flusher, err := h.prepareStream(c)
+	if err != nil {
+		return h.errorJSON(c, http.StatusInternalServerError, err.Error())
 	}
 
-	logDetail := h.LogDetail.Load()
-	var chunkIndex int
-	var chunks []*model.RequestChunk
+	chunkCh, errCh := llm.ChatCompletionStream(c.Request().Context(), chatReq)
+	collector := h.newChunkCollector(gwCtx.TraceID)
+
 	var promptTokens, completionTokens int
 	var finalErr string
 	statusCode := http.StatusOK
 
+streamLoop:
 	for {
 		select {
 		case chunk, ok := <-chunkCh:
 			if !ok {
-				goto streamEnd
+				break streamLoop
 			}
-
 			for _, choice := range chunk.Choices {
 				if choice.Delta.Content != "" {
-					event := provider.AnthropicStreamEvent{
+					data := h.writeSSEEvent(c, flusher, "content_block_delta", provider.AnthropicStreamEvent{
 						Type:  "content_block_delta",
 						Index: 0,
-						Delta: &provider.AnthropicDelta{
-							Type: "text_delta",
-							Text: choice.Delta.Content,
-						},
-					}
-					data, _ := json.Marshal(event)
-					line := "event: content_block_delta\ndata: " + string(data) + "\n\n"
-					fmt.Fprint(c.Response().Writer, line)
-					flusher.Flush()
-
-					if logDetail {
-						chunks = append(chunks, &model.RequestChunk{
-							TraceID:    traceID,
-							ChunkIndex: chunkIndex,
-							ChunkData:  string(data),
-							CreatedAt:  time.Now(),
-						})
-						chunkIndex++
-					}
+						Delta: &provider.AnthropicDelta{Type: "text_delta", Text: choice.Delta.Content},
+					})
+					collector.Add(data)
 				}
 			}
-
 			if chunk.Usage != nil {
 				promptTokens = chunk.Usage.PromptTokens
 				completionTokens = chunk.Usage.CompletionTokens
 			}
-
 		case err := <-errCh:
 			if err != nil {
 				finalErr = err.Error()
 				statusCode = http.StatusBadGateway
 			}
-			goto streamEnd
-
+			break streamLoop
 		case <-c.Request().Context().Done():
 			finalErr = "client disconnected"
 			statusCode = 499
-			goto streamEnd
+			break streamLoop
 		}
 	}
 
-streamEnd:
-	delta := provider.AnthropicStreamEvent{
-		Type: "message_delta",
-		Delta: &provider.AnthropicDelta{
-			StopReason: "end_turn",
-		},
-		Usage: &provider.AnthropicUsage{
-			InputTokens:  promptTokens,
-			OutputTokens: completionTokens,
-		},
-	}
-	data, _ := json.Marshal(delta)
-	fmt.Fprintf(c.Response().Writer, "event: message_delta\ndata: %s\n\n", string(data))
+	h.writeSSEEvent(c, flusher, "message_delta", provider.AnthropicStreamEvent{
+		Type:  "message_delta",
+		Delta: &provider.AnthropicDelta{StopReason: "end_turn"},
+		Usage: &provider.AnthropicUsage{InputTokens: promptTokens, OutputTokens: completionTokens},
+	})
 	fmt.Fprint(c.Response().Writer, "event: message_stop\ndata: {}\n\n")
 	flusher.Flush()
 
 	if promptTokens == 0 && completionTokens == 0 {
 		promptTokens = 1
 	}
-	latencyMs := time.Since(startTime).Milliseconds()
-	h.recordRequest(traceID, uid, kid, llm.ID(), req.Model, true,
-		promptTokens, completionTokens, promptTokens+completionTokens,
-		statusCode, finalErr, latencyMs, c, reqBytes, nil, chunks)
-
+	totalTokens := promptTokens + completionTokens
+	h.recordRequest(gwCtx.TraceID, gwCtx.UserID, gwCtx.APIKeyID, llm.ID(), req.Model, true,
+		promptTokens, completionTokens, totalTokens,
+		statusCode, finalErr, gwCtx.Latency(), c, gwCtx.ReqBytes, nil, collector.Chunks())
 	return nil
+}
+
+// writeSSEEvent 写入一条 SSE 事件并返回序列化后的数据
+func (h *AnthropicGatewayHandler) writeSSEEvent(c echo.Context, flusher http.Flusher, event string, v interface{}) []byte {
+	data, _ := json.Marshal(v)
+	fmt.Fprintf(c.Response().Writer, "event: %s\ndata: %s\n\n", event, data)
+	flusher.Flush()
+	return data
 }

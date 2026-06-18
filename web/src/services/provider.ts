@@ -13,6 +13,7 @@ export interface Provider {
   anthropicBaseUrl: string;
   preferredApi: string;
   isActive: boolean;
+  isDefault: boolean;
   modelCount?: number;
 }
 

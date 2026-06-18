@@ -76,6 +76,12 @@ const columns: ColumnDef<Provider, any>[] = [
     cell: ({ row }) => <Badge variant={(row.original.modelCount ?? 0) > 0 ? 'default' : 'secondary'}>{row.original.modelCount ?? 0}</Badge>,
   },
   {
+    accessorKey: 'isDefault',
+    header: '默认',
+    meta: { label: '默认', className: 'w-[60px]' },
+    cell: ({ row }) => row.original.isDefault ? <Badge variant="default">是</Badge> : null,
+  },
+  {
     accessorKey: 'isActive',
     header: '状态',
     meta: { label: '状态', className: 'w-[70px]' },
@@ -147,6 +153,7 @@ function ProviderForm({ form, entity }: { form: EasyFormApi<any>; entity?: Provi
         )}
       </div>
       <FormFieldSwitch className="col-span-2" form={form} name="isActive" title="启用当前服务商" switchLabel="启用" />
+      <FormFieldSwitch className="col-span-2" form={form} name="isDefault" title="设为默认服务商" switchLabel="默认" />
       {preferredApiOptions.length > 0 && (
         <FormFieldSelect className="col-span-4" form={form} name="preferredApi" title="优先接口" options={preferredApiOptions} />
       )}
@@ -200,6 +207,7 @@ function ProvidersPage() {
         anthropicBaseUrl: entity?.anthropicBaseUrl ?? '',
         preferredApi: entity?.preferredApi ?? 'openai',
         isActive: entity?.isActive ?? true,
+        isDefault: entity?.isDefault ?? false,
         models: [],
       })}
       formAddValidator={(e) => {
@@ -248,6 +256,7 @@ function ProviderDetail({ entity }: { entity: Provider; }) {
             ),
           },
           { label: '优先接口', value: <Badge variant="outline">{entity.preferredApi === 'openai' ? 'OpenAI' : 'Anthropic'}</Badge> },
+          { label: '默认服务商', value: entity.isDefault ? <Badge variant="default">是</Badge> : <Badge variant="secondary">否</Badge> },
           { label: '状态', value: <Badge variant={entity.isActive ? 'default' : 'destructive'}>{entity.isActive ? '启用' : '禁用'}</Badge> },
         ]}
       />

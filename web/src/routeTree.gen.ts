@@ -16,7 +16,6 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RequestLogsRouteImport } from './routes/request-logs'
 import { Route as ProvidersRouteImport } from './routes/providers'
 import { Route as ProviderModelsRouteImport } from './routes/provider-models'
-import { Route as ModelsRouteImport } from './routes/models'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthLoginRouteImport } from './routes/auth/login'
@@ -56,11 +55,6 @@ const ProviderModelsRoute = ProviderModelsRouteImport.update({
   path: '/provider-models',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ModelsRoute = ModelsRouteImport.update({
-  id: '/models',
-  path: '/models',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -80,7 +74,6 @@ const AuthLoginRoute = AuthLoginRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
-  '/models': typeof ModelsRoute
   '/provider-models': typeof ProviderModelsRoute
   '/providers': typeof ProvidersRoute
   '/request-logs': typeof RequestLogsRoute
@@ -93,7 +86,6 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
-  '/models': typeof ModelsRoute
   '/provider-models': typeof ProviderModelsRoute
   '/providers': typeof ProvidersRoute
   '/request-logs': typeof RequestLogsRoute
@@ -107,7 +99,6 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
-  '/models': typeof ModelsRoute
   '/provider-models': typeof ProviderModelsRoute
   '/providers': typeof ProvidersRoute
   '/request-logs': typeof RequestLogsRoute
@@ -122,7 +113,6 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/dashboard'
-    | '/models'
     | '/provider-models'
     | '/providers'
     | '/request-logs'
@@ -135,7 +125,6 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/dashboard'
-    | '/models'
     | '/provider-models'
     | '/providers'
     | '/request-logs'
@@ -148,7 +137,6 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/dashboard'
-    | '/models'
     | '/provider-models'
     | '/providers'
     | '/request-logs'
@@ -162,7 +150,6 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DashboardRoute: typeof DashboardRoute
-  ModelsRoute: typeof ModelsRoute
   ProviderModelsRoute: typeof ProviderModelsRoute
   ProvidersRoute: typeof ProvidersRoute
   RequestLogsRoute: typeof RequestLogsRoute
@@ -224,13 +211,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProviderModelsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/models': {
-      id: '/models'
-      path: '/models'
-      fullPath: '/models'
-      preLoaderRoute: typeof ModelsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/dashboard': {
       id: '/dashboard'
       path: '/dashboard'
@@ -258,7 +238,6 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRoute,
-  ModelsRoute: ModelsRoute,
   ProviderModelsRoute: ProviderModelsRoute,
   ProvidersRoute: ProvidersRoute,
   RequestLogsRoute: RequestLogsRoute,

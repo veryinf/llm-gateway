@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"llm-gateway/internal/model"
-	"llm-gateway/internal/service"
 	"llm-gateway/internal/web/common"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
@@ -11,7 +10,6 @@ import (
 
 type ProviderModelHandler struct {
 	common.BaseHandler
-	ProviderSvc *service.ProviderService
 }
 
 func (h *ProviderModelHandler) RegisterRoutes(g *echo.Group) {
@@ -102,7 +100,6 @@ func (h *ProviderModelHandler) AddProviderModel(c echo.Context) error {
 		return h.Error(-21, err.Error())
 	}
 
-	_ = h.ProviderSvc.ReloadProviders()
 	return common.NewData(input)
 }
 
@@ -166,7 +163,6 @@ func (h *ProviderModelHandler) UpdateProviderModel(c echo.Context) error {
 		return h.Error(-22, err.Error())
 	}
 
-	_ = h.ProviderSvc.ReloadProviders()
 	return h.Success()
 }
 
@@ -191,6 +187,5 @@ func (h *ProviderModelHandler) RemoveProviderModel(c echo.Context) error {
 		return h.Error(-23, err.Error())
 	}
 
-	_ = h.ProviderSvc.ReloadProviders()
 	return h.Success()
 }

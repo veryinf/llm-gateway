@@ -20,3 +20,11 @@ type User struct {
 	AccessKey  string `json:"accessKey" gorm:"unique"`
 	SecretKey  string `json:"secretKey"`
 }
+
+type UserKey struct {
+	KeyID    uint   `json:"keyId" gorm:"primaryKey;autoIncrement"`
+	UID      uint   `json:"uid"`
+	Key      string `json:"key" gorm:"unique"`
+	Title    string `json:"title"`
+	IsActive bool   `json:"isActive"`
+}

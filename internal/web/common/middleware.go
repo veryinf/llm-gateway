@@ -20,7 +20,7 @@ type LeContext struct {
 	echo.Context
 	AuthToken *TokenInfo
 	AuthUser  *model.User
-	APIKeyID  uint
+	UserKey   *model.UserKey
 }
 
 type LeMiddlewareConfig struct {
@@ -112,13 +112,13 @@ func ProxyMiddleware() echo.MiddlewareFunc {
 				return proxyUnauthorized(c)
 			}
 
-			var apiKey model.APIKey
-			if err := core.DB.Where("`key` = ? AND is_active = ?", rawKey, true).First(&apiKey).Error; err != nil {
+			var userKey model.UserKey
+			if err := core.DB.Where("`key` = ? AND is_active = ?", rawKey, true).First(&userKey).Error; err != nil {
 				return proxyUnauthorized(c)
 			}
 
 			var user model.User
-			if err := core.DB.Where("uid = ?", apiKey.UID).First(&user).Error; err != nil {
+			if err := core.DB.Where("uid = ?", userKey.UID).First(&user).Error; err != nil {
 				return proxyUnauthorized(c)
 			}
 			if user.Status != "active" {
@@ -126,7 +126,7 @@ func ProxyMiddleware() echo.MiddlewareFunc {
 			}
 
 			cc.AuthUser = &user
-			cc.APIKeyID = apiKey.KeyID
+			cc.UserKey = &userKey
 
 			return next(cc)
 		}

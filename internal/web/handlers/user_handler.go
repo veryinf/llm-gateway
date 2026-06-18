@@ -15,7 +15,7 @@ type UserHandler struct {
 
 type userWithCount struct {
 	model.User
-	APIKeyCount int `json:"apiKeyCount"`
+	UserKeyCount int `json:"userKeyCount"`
 }
 
 // SearchUsers 搜索用户
@@ -59,7 +59,7 @@ func (h *UserHandler) SearchUsers(c echo.Context) error {
 		UID   uint
 		Count int
 	}
-	h.DB.Model(&model.APIKey{}).Select("uid, count(*) as count").Group("uid").Scan(&counts)
+	h.DB.Model(&model.UserKey{}).Select("uid, count(*) as count").Group("uid").Scan(&counts)
 	countMap := make(map[uint]int, len(counts))
 	for _, c := range counts {
 		countMap[c.UID] = c.Count
@@ -67,7 +67,7 @@ func (h *UserHandler) SearchUsers(c echo.Context) error {
 
 	result := make([]userWithCount, len(users))
 	for i, u := range users {
-		result[i] = userWithCount{User: u, APIKeyCount: countMap[u.UID]}
+		result[i] = userWithCount{User: u, UserKeyCount: countMap[u.UID]}
 	}
 
 	return common.NewDataSet(result, count)
@@ -90,9 +90,9 @@ func (h *UserHandler) FetchUser(c echo.Context) error {
 	if err := h.DB.First(&user, input.UID).Error; err != nil {
 		return h.Error(-24, "用户不存在")
 	}
-	var apiKeyCount int64
-	h.DB.Model(&model.APIKey{}).Where("uid = ?", user.UID).Count(&apiKeyCount)
-	return common.NewData(userWithCount{User: user, APIKeyCount: int(apiKeyCount)})
+	var userKeyCount int64
+	h.DB.Model(&model.UserKey{}).Where("uid = ?", user.UID).Count(&userKeyCount)
+	return common.NewData(userWithCount{User: user, UserKeyCount: int(userKeyCount)})
 }
 
 // AddUser 添加用户

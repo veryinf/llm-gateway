@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Loading } from '@/components/loader';
 import { EasyTooltip } from '@/components/easy-tooltip';
 import { userService, type User } from '@/services/user';
-import { apiKeyService } from '@/services/api-key';
+import { userKeyService } from '@/services/api-key';
 import { useBreadcrumb } from '@/hooks/use-breadcrumb';
 import { CopyButton } from '@/components/easy-button';
 
@@ -95,8 +95,8 @@ function UsersPage() {
       cell: ({ row }) => (
         <EasyTooltip tooltip="点击查看详情">
           <Button variant="ghost" size="sm" asChild>
-            <Link to="/keys" search={{ uid: [row.original.uid] }}>
-              {row.original.apiKeyCount}
+            <Link to="/user-keys" search={{ uid: [row.original.uid] }}>
+              {row.original.userKeyCount}
             </Link>
           </Button>
         </EasyTooltip>
@@ -120,7 +120,7 @@ function UsersPage() {
         department: entity?.department ?? '',
         role: entity?.role ?? 'user',
         status: entity?.status ?? 'active',
-        apiKeyCount: entity?.apiKeyCount ?? 0,
+        userKeyCount: entity?.userKeyCount ?? 0,
       })}
       renderViewForm={(form, _entity) => (
         <div className="grid grid-cols-12 gap-4">
@@ -152,7 +152,7 @@ function UserDetail({ entity }: { entity: User; }) {
   const { data: apiKeys = [], isLoading: keysLoading } = useQuery({
     queryKey: ['user-api-keys', uid],
     queryFn: async () => {
-      const result = await apiKeyService.search({ filters: [{ field: 'uid', value: uid }] });
+      const result = await userKeyService.search({ filters: [{ field: 'uid', value: uid }] });
       return result.dataSet ?? [];
     },
   });

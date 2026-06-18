@@ -40,9 +40,10 @@ type LogService struct {
 }
 
 // InitSlog 初始化全局 slog 日志。
-//   mode:   "console" | "file" | "both"
-//   level:  "debug" | "info" | "warn" | "error"
-//   logDir: 日志文件目录，为空时默认 "./logs"
+//
+//	mode:   "console" | "file" | "both"
+//	level:  "debug" | "info" | "warn" | "error"
+//	logDir: 日志文件目录，为空时默认 "./logs"
 func InitSlog(mode, level, logDir string) *LogService {
 	lvl := parseLogLevel(level)
 
@@ -119,11 +120,6 @@ func (s *LogService) GetLogPath(date string) string {
 		date = time.Now().Format("20060102")
 	}
 	return filepath.Join(s.logDir, date+".log")
-}
-
-// IsConsoleMode 是否为 console 模式。
-func (s *LogService) IsConsoleMode() bool {
-	return s.mode == "console"
 }
 
 // initFileWriter 打开当天的日志文件（调用方需持有 s.mu 写锁）。

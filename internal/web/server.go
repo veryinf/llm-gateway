@@ -6,8 +6,6 @@ import (
 	"io/fs"
 	llmgateway "llm-gateway"
 	"llm-gateway/internal/core"
-	"llm-gateway/internal/provider"
-	"llm-gateway/internal/router"
 	"llm-gateway/internal/service"
 	"llm-gateway/internal/web/common"
 	"llm-gateway/internal/web/handlers"
@@ -76,12 +74,6 @@ func InitHttpServer(db *gorm.DB, store *sql.DB, cfg *core.Config) *echo.Echo {
 
 	base := common.BaseHandler{DB: db, Store: store, TokenManager: tokenManager, Config: cfg}
 
-	// 初始化 Provider 相关服务
-	registry := provider.NewRegistry()
-	modelRouter := router.NewModelRouter(registry)
-	providerSvc := service.NewProviderService(db, registry, modelRouter)
-	_ = providerSvc.LoadProvidersFromDB()
-
 	// 公共接口
 	bizApi := e.Group(apiBizPrefix)
 	bizApi.Use(common.LeMiddleware(common.LeMiddlewareConfig{
@@ -94,18 +86,20 @@ func InitHttpServer(db *gorm.DB, store *sql.DB, cfg *core.Config) *echo.Echo {
 	(&handlers.ProfileHandler{BaseHandler: base}).RegisterRoutes(bizApi)
 	(&handlers.ConfigHandler{BaseHandler: base}).RegisterRoutes(bizApi)
 	(&handlers.UserHandler{BaseHandler: base}).RegisterRoutes(bizApi)
-	(&handlers.ApikeyHandler{BaseHandler: base}).RegisterRoutes(bizApi)
-	(&handlers.ProviderHandler{BaseHandler: base, ProviderSvc: providerSvc}).RegisterRoutes(bizApi)
-	(&handlers.ProviderModelHandler{BaseHandler: base, ProviderSvc: providerSvc}).RegisterRoutes(bizApi)
+	(&handlers.UserKeyHandler{BaseHandler: base}).RegisterRoutes(bizApi)
+	(&handlers.UserModelHandler{BaseHandler: base}).RegisterRoutes(bizApi)
+	(&handlers.UserModelRouterHandler{BaseHandler: base}).RegisterRoutes(bizApi)
+	(&handlers.ProviderHandler{BaseHandler: base}).RegisterRoutes(bizApi)
+	(&handlers.ProviderModelHandler{BaseHandler: base}).RegisterRoutes(bizApi)
 	// Health check
 	(&handlers.HealthHandler{BaseHandler: base}).RegisterRoutes(bizApi)
 
 	// LLM Gateway API — uses ProxyMiddleware (sk- API Key)
 	v1 := e.Group("/v1")
 	v1.Use(common.ProxyMiddleware())
-	(&handlers.GatewayHandler{BaseHandler: base, ModelRouter: modelRouter}).RegisterRoutes(v1)
+	(&handlers.OpenAIGatewayHandler{GatewayBase: handlers.GatewayBase{BaseHandler: base}}).RegisterRoutes(v1)
 	anthropic := e.Group("/anthropic")
 	anthropic.Use(common.ProxyMiddleware())
-	(&handlers.GatewayHandler{BaseHandler: base, ModelRouter: modelRouter}).RegisterRoutes(anthropic)
+	(&handlers.AnthropicGatewayHandler{GatewayBase: handlers.GatewayBase{BaseHandler: base}}).RegisterRoutes(anthropic)
 	return e
 }

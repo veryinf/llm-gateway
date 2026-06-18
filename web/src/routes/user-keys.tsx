@@ -6,7 +6,7 @@ import { Descriptions } from '@/components/descriptions';
 import { FormFieldInput, FormFieldSelect } from '@/components/form';
 import { Badge } from '@/components/ui/badge';
 import { useBreadcrumb } from '@/hooks/use-breadcrumb';
-import { apiKeyService, type APIKey } from '@/services/api-key';
+import { userKeyService, type UserKey } from '@/services/api-key';
 import { useAllUsers } from '@/services/user';
 import { CopyButton } from '@/components/easy-button';
 
@@ -33,7 +33,7 @@ function AppKeysPage() {
     setBreadcrumbs(pageInformation.breadcrumbs ?? []);
   }, []);
 
-  const columns: ColumnDef<APIKey, any>[] = [
+  const columns: ColumnDef<UserKey, any>[] = [
     {
       accessorKey: 'title',
       header: '名称',
@@ -69,11 +69,11 @@ function AppKeysPage() {
   ];
 
   return (
-    <Page<APIKey>
+    <Page<UserKey>
       infomation={pageInformation}
       ready={!isLoading}
       columns={columns}
-      service={apiKeyService}
+      service={userKeyService}
       options={{ showSelectColumn: false }}
       formInitialValue={(_type, entity) => ({
         keyId: entity?.keyId ?? 0,

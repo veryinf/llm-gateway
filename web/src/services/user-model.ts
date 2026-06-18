@@ -1,47 +1,40 @@
 import { request } from '@/lib';
 import type { API } from '@/typings';
-import type { ProviderModel } from './provider-model';
 
 export interface UserModel {
-  id: number;
+  userModelId: number;
   name: string;
-  display_name: string;
-  upstream_model_id: number;
+  displayName: string;
   description: string;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-  upstream_model?: ProviderModel;
+  isActive: boolean;
 }
 
 export const userModelService: API.Service<UserModel> = {
-  primaryKey: (entity) => entity.id,
-  title: (entity) => entity.display_name || entity.name,
+  primaryKey: (entity) => entity.userModelId,
+  title: (entity) => entity.displayName || entity.name,
 
-  async search(_params) {
-    const res = await request.get<API.DataSet<UserModel>>('/admin/user-models');
+  async search(params) {
+    const res = await request.post<API.DataSet<UserModel>>('/user-models/search', params);
     return res.data;
   },
 
-  async fetch(id) {
-    const res = await request.get<API.Data<UserModel>>('/admin/user-models');
-    const list = (res.data.data as unknown as UserModel[]) ?? [];
-    const item = list.find((m) => m.id === id);
-    return { errCode: 0, errMsg: 'ok', data: item };
+  async fetch(userModelId) {
+    const res = await request.post<API.Data<UserModel>>('/user-models/fetch', { userModelId });
+    return res.data;
   },
 
   async add(params) {
-    await request.post('/admin/user-models', params);
-    return { errCode: 0, errMsg: 'ok' };
+    const res = await request.post<API.ResponseStruct>('/user-models/add', params);
+    return res.data;
   },
 
-  async update(id, params) {
-    await request.put(`/admin/user-models/${id}`, params);
-    return { errCode: 0, errMsg: 'ok' };
+  async update(userModelId, params) {
+    const res = await request.post('/user-models/update', { userModelId, ...params });
+    return res.data;
   },
 
-  async delete(id) {
-    await request.delete(`/admin/user-models/${id}`);
-    return { errCode: 0, errMsg: 'ok' };
+  async delete(userModelId) {
+    const res = await request.post('/user-models/remove', { userModelId });
+    return res.data;
   },
 };

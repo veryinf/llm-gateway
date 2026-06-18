@@ -1,7 +1,7 @@
 import { request } from '@/lib';
 import type { API } from '@/typings';
 
-export interface APIKey {
+export interface UserKey {
   keyId: number;
   uid: number;
   key: string;
@@ -9,17 +9,17 @@ export interface APIKey {
   isActive: boolean;
 }
 
-export const apiKeyService: API.Service<APIKey> = {
+export const userKeyService: API.Service<UserKey> = {
   primaryKey: (entity) => entity.keyId,
   title: (entity) => entity.title || entity.key,
 
   async search(params) {
-    const res = await request.post<API.DataSet<APIKey>>('/apikey/search', params);
+    const res = await request.post<API.DataSet<UserKey>>('/apikey/search', params);
     return res.data;
   },
 
   async fetch(keyId) {
-    const res = await request.post<API.Data<APIKey>>('/apikey/fetch', { keyId });
+    const res = await request.post<API.Data<UserKey>>('/apikey/fetch', { keyId });
     return res.data;
   },
 

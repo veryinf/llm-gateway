@@ -38,6 +38,10 @@ func InitDB(dataDir string) (*gorm.DB, *sql.DB) {
 		slog.Error("failed to enable foreign keys", "error", err)
 		os.Exit(1)
 	}
+	if err := db.Exec("PRAGMA mmap_size=67108864").Error; err != nil {
+		slog.Error("failed to enable mmap", "error", err)
+		os.Exit(1)
+	}
 	conn, err := db.DB()
 	if err != nil {
 		slog.Error("failed to get application database connection", "error", err)
@@ -47,7 +51,7 @@ func InitDB(dataDir string) (*gorm.DB, *sql.DB) {
 	// 自动迁移（创建表结构）
 	if err := db.AutoMigrate(
 		&model.Config{},
-		&model.APIKey{},
+		&model.UserKey{},
 		&model.Provider{},
 		&model.ProviderModel{},
 		&model.UserModel{},

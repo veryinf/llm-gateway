@@ -11,18 +11,18 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-type ApikeyHandler struct {
+type UserKeyHandler struct {
 	common.BaseHandler
 }
 
-// SearchAPIKeys 搜索 API Key
-func (h *ApikeyHandler) SearchAPIKeys(c echo.Context) error {
+// SearchUserKeys 搜索 API Key
+func (h *UserKeyHandler) SearchUserKeys(c echo.Context) error {
 	input := &common.SearchParams{}
 	if err := c.Bind(input); err != nil {
 		return err
 	}
 
-	query := h.DB.Model(&model.APIKey{}).Order("key_id DESC")
+	query := h.DB.Model(&model.UserKey{}).Order("key_id DESC")
 
 	// 关键词搜索：title、key
 	if input.Kw != "" {
@@ -41,7 +41,7 @@ func (h *ApikeyHandler) SearchAPIKeys(c echo.Context) error {
 	}
 
 	var count int64
-	var keys []model.APIKey
+	var keys []model.UserKey
 	if err := h.Pagination(&input.Pagination, query, &keys, &count); err != nil {
 		return err
 	}
@@ -49,8 +49,8 @@ func (h *ApikeyHandler) SearchAPIKeys(c echo.Context) error {
 	return common.NewDataSet(keys, count)
 }
 
-// FetchAPIKey 获取单个 API Key
-func (h *ApikeyHandler) FetchAPIKey(c echo.Context) error {
+// FetchUserKey 获取单个 API Key
+func (h *UserKeyHandler) FetchUserKey(c echo.Context) error {
 	input := &struct {
 		KeyID int64 `json:"keyId"`
 	}{}
@@ -63,16 +63,16 @@ func (h *ApikeyHandler) FetchAPIKey(c echo.Context) error {
 		return h.Error(-11, err.Error())
 	}
 
-	var key model.APIKey
+	var key model.UserKey
 	if err := h.DB.First(&key, input.KeyID).Error; err != nil {
 		return h.Error(-24, "API Key 不存在")
 	}
 	return common.NewData(key)
 }
 
-// AddAPIKey 新增 API Key
-func (h *ApikeyHandler) AddAPIKey(c echo.Context) error {
-	input := &model.APIKey{}
+// AddUserKey 新增 API Key
+func (h *UserKeyHandler) AddUserKey(c echo.Context) error {
+	input := &model.UserKey{}
 	if err := c.Bind(input); err != nil {
 		return err
 	}
@@ -103,8 +103,8 @@ func (h *ApikeyHandler) AddAPIKey(c echo.Context) error {
 	return common.NewData(input)
 }
 
-// UpdateAPIKey 更新 API Key
-func (h *ApikeyHandler) UpdateAPIKey(c echo.Context) error {
+// UpdateUserKey 更新 API Key
+func (h *UserKeyHandler) UpdateUserKey(c echo.Context) error {
 	input, err := h.GetJSON(c)
 	if err != nil {
 		return err
@@ -128,14 +128,14 @@ func (h *ApikeyHandler) UpdateAPIKey(c echo.Context) error {
 		return h.Success()
 	}
 
-	if err := h.DB.Model(&model.APIKey{}).Where("key_id = ?", keyID.Uint()).Updates(newState).Error; err != nil {
+	if err := h.DB.Model(&model.UserKey{}).Where("key_id = ?", keyID.Uint()).Updates(newState).Error; err != nil {
 		return h.Error(-22, err.Error())
 	}
 	return h.Success()
 }
 
-// RemoveAPIKey 删除 API Key
-func (h *ApikeyHandler) RemoveAPIKey(c echo.Context) error {
+// RemoveUserKey 删除 API Key
+func (h *UserKeyHandler) RemoveUserKey(c echo.Context) error {
 	input := &struct {
 		KeyID int64 `json:"keyId"`
 	}{}
@@ -148,16 +148,16 @@ func (h *ApikeyHandler) RemoveAPIKey(c echo.Context) error {
 		return h.Error(-11, err.Error())
 	}
 
-	if err := h.DB.Delete(&model.APIKey{}, input.KeyID).Error; err != nil {
+	if err := h.DB.Delete(&model.UserKey{}, input.KeyID).Error; err != nil {
 		return h.Error(-23, err.Error())
 	}
 	return h.Success()
 }
 
-func (h *ApikeyHandler) RegisterRoutes(g *echo.Group) {
-	g.POST("/apikey/search", h.SearchAPIKeys)
-	g.POST("/apikey/fetch", h.FetchAPIKey)
-	g.POST("/apikey/add", h.AddAPIKey)
-	g.POST("/apikey/update", h.UpdateAPIKey)
-	g.POST("/apikey/remove", h.RemoveAPIKey)
+func (h *UserKeyHandler) RegisterRoutes(g *echo.Group) {
+	g.POST("/apikey/search", h.SearchUserKeys)
+	g.POST("/apikey/fetch", h.FetchUserKey)
+	g.POST("/apikey/add", h.AddUserKey)
+	g.POST("/apikey/update", h.UpdateUserKey)
+	g.POST("/apikey/remove", h.RemoveUserKey)
 }

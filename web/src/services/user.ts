@@ -10,7 +10,7 @@ export interface User {
   department: string;
   role: 'admin' | 'user' | 'viewer';
   status: string;
-  apiKeyCount: number;
+  userKeyCount: number;
 }
 
 export interface CreateUserParams {

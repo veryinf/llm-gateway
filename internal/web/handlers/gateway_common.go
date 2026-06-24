@@ -95,21 +95,22 @@ func (h *GatewayBase) errorJSON(c echo.Context, code int, msg string) error {
 }
 
 // resolveProvider 委托给 RouterService
-func (h *GatewayBase) resolveProvider(modelName string) (provider.LLMProvider, error) {
+// 返回: adapter, providerModelName, passthroughLevel, error
+func (h *GatewayBase) resolveProvider(modelName string) (*provider.Adapter, string, string, error) {
 	return h.RouterSvc.ResolveProvider(modelName)
 }
 
 // recordRequest 委托给 RequestLogService
 func (h *GatewayBase) recordRequest(traceID string, userID, apiKeyID uint,
-	providerName, modelName string, isStream bool,
-	promptTokens, completionTokens, totalTokens int,
-	statusCode int, errMsg string, latencyMs int64, c echo.Context,
+	userModel, providerModel, userApiType, providerApiType, passthroughLevel string, isStream bool,
+	promptTokens, completionTokens, totalTokens, cachedTokens int,
+	statusCode int, errMsg string, duration int64, c echo.Context,
 	reqBytes, respBytes []byte, chunks []*model.RequestChunk) {
 
 	h.LogSvc.RecordRequest(traceID, userID, apiKeyID,
-		providerName, modelName, isStream,
-		promptTokens, completionTokens, totalTokens,
-		statusCode, errMsg, latencyMs,
+		userModel, providerModel, userApiType, providerApiType, passthroughLevel, isStream,
+		promptTokens, completionTokens, totalTokens, cachedTokens,
+		statusCode, errMsg, duration,
 		c.RealIP(), c.Request().Header.Get("User-Agent"),
 		reqBytes, respBytes, chunks)
 }

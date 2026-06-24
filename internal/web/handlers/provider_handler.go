@@ -118,7 +118,6 @@ func (h *ProviderHandler) AddProvider(c echo.Context) error {
 		OpenaiBaseURL:    input.Get("openaiBaseUrl").String(),
 		SupportAnthropic: input.Get("supportAnthropic").Bool(),
 		AnthropicBaseURL: input.Get("anthropicBaseUrl").String(),
-		PreferredAPI:     input.Get("preferredApi").String(),
 		IsActive:         input.Get("isActive").Bool(),
 		IsDefault:        input.Get("isDefault").Bool(),
 	}
@@ -143,10 +142,6 @@ func (h *ProviderHandler) AddProvider(c echo.Context) error {
 		return h.Error(-11, "请至少支持一种协议（OpenAI 或 Anthropic）")
 	}
 
-	// 设置默认值
-	if p.PreferredAPI == "" {
-		p.PreferredAPI = "openai"
-	}
 	p.IsActive = true
 
 	// 提取 models 字段
@@ -230,16 +225,6 @@ func (h *ProviderHandler) UpdateProvider(c echo.Context) error {
 
 	if input.Get("anthropicBaseUrl").Exists() {
 		newState["anthropic_base_url"] = input.Get("anthropicBaseUrl").String()
-	}
-
-	if input.Get("preferredApi").Exists() {
-		preferredAPI := input.Get("preferredApi").String()
-		if err := validation.Validate(preferredAPI,
-			validation.In("openai", "anthropic"),
-		); err != nil {
-			return h.Error(-11, err.Error())
-		}
-		newState["preferred_api"] = preferredAPI
 	}
 
 	if input.Get("isActive").Exists() {
@@ -373,8 +358,17 @@ func (h *ProviderHandler) FetchProviderModels(c echo.Context) error {
 		return h.Error(-11, "Base URL 不能为空")
 	}
 
-	p := provider.NewOpenAIProvider("_fetch", input.BaseURL, input.APIKey)
-	models, err := p.ListModels(c.Request().Context())
+	p := &model.Provider{
+		Title:         "_fetch",
+		BaseURL:       input.BaseURL,
+		APIKey:        input.APIKey,
+		SupportOpenai: true,
+	}
+	adapter, err := provider.NewAdapter(p)
+	if err != nil {
+		return h.Error(-22, err.Error())
+	}
+	models, err := adapter.ListModels(c.Request().Context())
 	if err != nil {
 		return h.Error(-22, err.Error())
 	}

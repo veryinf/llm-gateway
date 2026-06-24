@@ -1,11 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useEffect, useMemo } from 'react';
+import { useEffect } from 'react';
 import { useStore } from '@tanstack/react-form';
 import type { ColumnDef } from '@tanstack/react-table';
 import { useQuery } from '@tanstack/react-query';
 import { Page, type PageInformation } from '@/components/full-page';
 import { Descriptions } from '@/components/descriptions';
-import { FormFieldInput, FormFieldSelect, FormFieldSwitch, FormFieldTagsInput } from '@/components/form';
+import { FormFieldInput, FormFieldSwitch, FormFieldTagsInput } from '@/components/form';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -64,12 +64,6 @@ const columns: ColumnDef<Provider, any>[] = [
     ),
   },
   {
-    accessorKey: 'preferredApi',
-    header: '优先接口',
-    meta: { label: '优先接口', className: 'w-[80px]' },
-    cell: ({ row }) => <Badge variant="outline">{row.original.preferredApi === 'openai' ? 'OpenAI' : 'Anthropic'}</Badge>,
-  },
-  {
     accessorKey: 'modelCount',
     header: '模型数',
     meta: { label: '模型数', className: 'w-[80px]' },
@@ -95,16 +89,7 @@ function ProviderForm({ form, entity }: { form: EasyFormApi<any>; entity?: Provi
   const isEdit = !!entity;
 
   const v = useStore(form.store ?? form, (s: any) => s.values ?? s) as any;
-  const supportOpenai = v?.supportOpenai ?? false;
-  const supportAnthropic = v?.supportAnthropic ?? false;
   const baseUrl = v?.baseUrl ?? '';
-
-  const preferredApiOptions = useMemo(() => {
-    const opts: { label: string; value: string; }[] = [];
-    if (supportOpenai) opts.push({ label: 'OpenAI', value: 'openai' });
-    if (supportAnthropic) opts.push({ label: 'Anthropic', value: 'anthropic' });
-    return opts;
-  }, [supportOpenai, supportAnthropic]);
 
   // 编辑模式：加载已有模型
   useQuery({
@@ -119,12 +104,6 @@ function ProviderForm({ form, entity }: { form: EasyFormApi<any>; entity?: Provi
       return result.dataSet;
     },
   });
-
-  useEffect(() => {
-    if (preferredApiOptions.length > 0 && !preferredApiOptions.find((o) => o.value === v?.preferredApi)) {
-      form.setFieldValue('preferredApi', preferredApiOptions[0].value);
-    }
-  }, [preferredApiOptions, v?.preferredApi, form]);
 
   async function handleFetchModels() {
     if (!baseUrl) { toast.error('请先填写 BaseURL'); return []; }
@@ -154,9 +133,6 @@ function ProviderForm({ form, entity }: { form: EasyFormApi<any>; entity?: Provi
       </div>
       <FormFieldSwitch className="col-span-2" form={form} name="isActive" title="启用当前服务商" switchLabel="启用" />
       <FormFieldSwitch className="col-span-2" form={form} name="isDefault" title="设为默认服务商" switchLabel="默认" />
-      {preferredApiOptions.length > 0 && (
-        <FormFieldSelect className="col-span-4" form={form} name="preferredApi" title="优先接口" options={preferredApiOptions} />
-      )}
       <FormFieldTagsInput
         className="col-span-12 border-t pt-4"
         form={form}
@@ -205,7 +181,6 @@ function ProvidersPage() {
         openaiBaseUrl: entity?.openaiBaseUrl ?? '',
         supportAnthropic: entity?.supportAnthropic ?? true,
         anthropicBaseUrl: entity?.anthropicBaseUrl ?? '',
-        preferredApi: entity?.preferredApi ?? 'openai',
         isActive: entity?.isActive ?? true,
         isDefault: entity?.isDefault ?? false,
         models: [],
@@ -255,7 +230,6 @@ function ProviderDetail({ entity }: { entity: Provider; }) {
               </div>
             ),
           },
-          { label: '优先接口', value: <Badge variant="outline">{entity.preferredApi === 'openai' ? 'OpenAI' : 'Anthropic'}</Badge> },
           { label: '默认服务商', value: entity.isDefault ? <Badge variant="default">是</Badge> : <Badge variant="secondary">否</Badge> },
           { label: '状态', value: <Badge variant={entity.isActive ? 'default' : 'destructive'}>{entity.isActive ? '启用' : '禁用'}</Badge> },
         ]}

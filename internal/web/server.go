@@ -3,6 +3,8 @@ package web
 import (
 	"context"
 	"io/fs"
+	"strings"
+
 	llmgateway "llm-gateway"
 	"llm-gateway/internal/core"
 	"llm-gateway/internal/service"
@@ -21,6 +23,8 @@ import (
 
 var (
 	apiBizPrefix = "/api"
+	// 静态文件中间件跳过的路径前缀
+	staticSkipPrefixes = []string{"/api/", "/v1/", "/anthropic/"}
 )
 
 func InitHttpServer(db *gorm.DB, store *sqlx.DB, cfg *core.Config) *echo.Echo {
@@ -45,7 +49,12 @@ func InitHttpServer(db *gorm.DB, store *sqlx.DB, cfg *core.Config) *echo.Echo {
 	e.Use(middleware.StaticWithConfig(middleware.StaticConfig{
 		Skipper: func(c echo.Context) bool {
 			uri := c.Request().RequestURI
-			return len(uri) >= 5 && uri[:5] == "/api/"
+			for _, prefix := range staticSkipPrefixes {
+				if strings.HasPrefix(uri, prefix) {
+					return true
+				}
+			}
+			return false
 		},
 		HTML5:      true,
 		Filesystem: http.FS(staticFS),
@@ -83,6 +92,8 @@ func InitHttpServer(db *gorm.DB, store *sqlx.DB, cfg *core.Config) *echo.Echo {
 	bizApi.Use(common.LeMiddleware(common.LeMiddlewareConfig{
 		IgnorePaths: []string{
 			apiBizPrefix + "/auth/login",
+			apiBizPrefix + "/health",
+			apiBizPrefix + "/health/ready",
 		},
 		TokenManager: tokenManager,
 	}))
@@ -108,7 +119,7 @@ func InitHttpServer(db *gorm.DB, store *sqlx.DB, cfg *core.Config) *echo.Echo {
 	v1 := e.Group("/v1")
 	v1.Use(common.ProxyMiddleware())
 	(&handlers.OpenAIGatewayHandler{GatewayBase: gatewayBase}).RegisterRoutes(v1)
-	anthropic := e.Group("/anthropic")
+	anthropic := e.Group("/anthropic/v1")
 	anthropic.Use(common.ProxyMiddleware())
 	(&handlers.AnthropicGatewayHandler{GatewayBase: gatewayBase}).RegisterRoutes(anthropic)
 	return e

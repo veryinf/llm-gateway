@@ -11,7 +11,6 @@ export interface Provider {
   openaiBaseUrl: string;
   supportAnthropic: boolean;
   anthropicBaseUrl: string;
-  preferredApi: string;
   isActive: boolean;
   isDefault: boolean;
   modelCount?: number;

@@ -9,7 +9,6 @@ type Provider struct {
 	OpenaiBaseURL    string `json:"openaiBaseUrl,omitempty"`
 	SupportAnthropic bool   `json:"supportAnthropic"`
 	AnthropicBaseURL string `json:"anthropicBaseUrl,omitempty"`
-	PreferredAPI     string `json:"preferredApi"`
 	IsActive         bool   `json:"isActive"`
 	IsDefault        bool   `json:"isDefault"`
 }

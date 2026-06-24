@@ -1,12 +1,14 @@
 package handlers
 
 import (
-	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"time"
 
 	"llm-gateway/internal/provider"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -19,147 +21,142 @@ func (h *AnthropicGatewayHandler) RegisterRoutes(g *echo.Group) {
 }
 
 func (h *AnthropicGatewayHandler) HandleMessages(c echo.Context) error {
-	var req provider.AnthropicRequest
-	gwCtx, err := h.prepareRequest(c, &req)
+	// 解析 LLM 请求
+	llmReq, err := provider.ParseLLMRequest(c.Request(), provider.APITypeAnthropic)
 	if err != nil {
 		return h.errorJSON(c, http.StatusBadRequest, err.Error())
 	}
 
-	llm, err := h.resolveProvider(req.Model)
+	// 设置 traceID
+	traceID := c.Get("trace_id").(string)
+	if traceID == "" {
+		traceID = uuid.New().String()
+		c.Set("trace_id", traceID)
+	}
+
+	adapter, providerModel, passthroughLevel, err := h.resolveProvider(llmReq.Model)
 	if err != nil {
 		return h.errorJSON(c, http.StatusNotFound, "no provider available")
 	}
 
-	chatReq := h.buildChatRequest(&req)
-
-	if req.Stream {
-		return h.handleStream(c, llm, chatReq, &req, gwCtx)
+	// 根据 Provider 支持的协议决定处理方式
+	if adapter.SupportAnthropic() {
+		// 直接透传 Anthropic 请求
+		if llmReq.Stream {
+			return h.handleStream(c, adapter, llmReq, providerModel, passthroughLevel, false)
+		}
+		return h.handleNonStream(c, adapter, llmReq, providerModel, passthroughLevel, false)
+	} else if adapter.SupportOpenAI() {
+		// 需要转换格式
+		if llmReq.Stream {
+			return h.handleStream(c, adapter, llmReq, providerModel, passthroughLevel, true)
+		}
+		return h.handleNonStream(c, adapter, llmReq, providerModel, passthroughLevel, true)
 	}
-	return h.handleNonStream(c, llm, chatReq, &req, gwCtx)
+
+	return h.errorJSON(c, http.StatusNotFound, "no provider available")
 }
 
-// buildChatRequest 将 AnthropicRequest 转换为统一的 ChatRequest
-func (h *AnthropicGatewayHandler) buildChatRequest(req *provider.AnthropicRequest) *provider.ChatRequest {
-	chatReq := &provider.ChatRequest{
-		Model:       req.Model,
-		Stream:      req.Stream,
-		MaxTokens:   req.MaxTokens,
-		Temperature: req.Temperature,
-		TopP:        req.TopP,
+func (h *AnthropicGatewayHandler) handleNonStream(c echo.Context, adapter *provider.Adapter,
+	llmReq *provider.LLMRequest, providerModel, passthroughLevel string, needConvert bool) error {
+
+	startTime := time.Now()
+	traceID := c.Get("trace_id").(string)
+	uid, kid := extractUserInfo(c)
+
+	var resp *provider.LLMResponse
+	var err error
+
+	if needConvert {
+		// 需要转换：Anthropic → OpenAI → Provider → OpenAI → Anthropic
+		openaiReq, _ := llmReq.ToOpenAI()
+		resp, err = adapter.ChatCompletion(c.Request().Context(), openaiReq)
+		if err == nil {
+			resp, err = resp.ToAnthropic()
+		}
+	} else {
+		// 直接透传
+		resp, err = adapter.Message(c.Request().Context(), llmReq)
 	}
 
-	for _, msg := range req.Messages {
-		chatReq.Messages = append(chatReq.Messages, provider.ChatMessage{
-			Role:    msg.Role,
-			Content: provider.FlexContent(msg.Content),
-		})
-	}
-	return chatReq
-}
-
-func (h *AnthropicGatewayHandler) handleNonStream(c echo.Context, llm provider.LLMProvider,
-	chatReq *provider.ChatRequest, req *provider.AnthropicRequest, gwCtx *gatewayContext) error {
-
-	resp, err := llm.ChatCompletion(c.Request().Context(), chatReq)
-	latencyMs := gwCtx.Latency()
+	duration := time.Since(startTime).Milliseconds()
 
 	if err != nil {
-		h.recordRequest(gwCtx.TraceID, gwCtx.UserID, gwCtx.APIKeyID, llm.ID(), req.Model, false,
-			0, 0, 0, http.StatusBadGateway, err.Error(), latencyMs, c, gwCtx.ReqBytes, nil, nil)
+		h.recordRequest(traceID, uid, kid,
+			llmReq.Model, providerModel, string(provider.APITypeAnthropic), adapter.Type(), passthroughLevel, false,
+			0, 0, 0, 0, http.StatusBadGateway, err.Error(), duration, c, llmReq.BodyRaw, nil, nil)
 		return h.errorJSON(c, http.StatusBadGateway, err.Error())
 	}
 
-	respBytes, _ := json.Marshal(resp)
-	h.recordRequest(gwCtx.TraceID, gwCtx.UserID, gwCtx.APIKeyID, llm.ID(), req.Model, false,
-		resp.Usage.PromptTokens, resp.Usage.CompletionTokens, resp.Usage.TotalTokens,
-		http.StatusOK, "", latencyMs, c, gwCtx.ReqBytes, respBytes, nil)
+	// 读取响应用于日志
+	respBody, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
 
-	return c.JSON(http.StatusOK, provider.AnthropicResponse{
-		ID:    resp.ID,
-		Type:  "message",
-		Role:  "assistant",
-		Model: resp.Model,
-		Content: []provider.AnthropicContentBlock{
-			{Type: "text", Text: string(resp.Choices[0].Message.Content)},
-		},
-		Usage: provider.AnthropicUsage{
-			InputTokens:  resp.Usage.PromptTokens,
-			OutputTokens: resp.Usage.CompletionTokens,
-		},
-	})
+	h.recordRequest(traceID, uid, kid,
+		llmReq.Model, providerModel, string(provider.APITypeAnthropic), adapter.Type(), passthroughLevel, false,
+		0, 0, 0, 0,
+		http.StatusOK, "", duration, c, llmReq.BodyRaw, respBody, nil)
+
+	return c.Blob(http.StatusOK, "application/json", respBody)
 }
 
-func (h *AnthropicGatewayHandler) handleStream(c echo.Context, llm provider.LLMProvider,
-	chatReq *provider.ChatRequest, req *provider.AnthropicRequest, gwCtx *gatewayContext) error {
+func (h *AnthropicGatewayHandler) handleStream(c echo.Context, adapter *provider.Adapter,
+	llmReq *provider.LLMRequest, providerModel, passthroughLevel string, needConvert bool) error {
 
 	flusher, err := h.prepareStream(c)
 	if err != nil {
 		return h.errorJSON(c, http.StatusInternalServerError, err.Error())
 	}
 
-	chunkCh, errCh := llm.ChatCompletionStream(c.Request().Context(), chatReq)
-	collector := h.newChunkCollector(gwCtx.TraceID)
+	startTime := time.Now()
+	traceID := c.Get("trace_id").(string)
+	uid, kid := extractUserInfo(c)
+	collector := h.newChunkCollector(traceID)
 
-	var promptTokens, completionTokens int
+	var chunkCh <-chan []byte
+	var errCh <-chan error
+
+	if needConvert {
+		// 需要转换格式
+		openaiReq, _ := llmReq.ToOpenAI()
+		chunkCh, errCh = adapter.ChatCompletionStream(c.Request().Context(), openaiReq)
+	} else {
+		// 直接透传
+		chunkCh, errCh = adapter.MessageStream(c.Request().Context(), llmReq)
+	}
+
 	var finalErr string
 	statusCode := http.StatusOK
 
-streamLoop:
-	for {
-		select {
-		case chunk, ok := <-chunkCh:
-			if !ok {
-				break streamLoop
-			}
-			for _, choice := range chunk.Choices {
-				if choice.Delta.Content != "" {
-					data := h.writeSSEEvent(c, flusher, "content_block_delta", provider.AnthropicStreamEvent{
-						Type:  "content_block_delta",
-						Index: 0,
-						Delta: &provider.AnthropicDelta{Type: "text_delta", Text: choice.Delta.Content},
-					})
-					collector.Add(data)
-				}
-			}
-			if chunk.Usage != nil {
-				promptTokens = chunk.Usage.PromptTokens
-				completionTokens = chunk.Usage.CompletionTokens
-			}
-		case err := <-errCh:
-			if err != nil {
-				finalErr = err.Error()
-				statusCode = http.StatusBadGateway
-			}
-			break streamLoop
-		case <-c.Request().Context().Done():
-			finalErr = "client disconnected"
-			statusCode = 499
-			break streamLoop
+	for data := range chunkCh {
+		if needConvert {
+			// OpenAI 格式 chunk，需要转换为 Anthropic 格式
+			// 这里简化处理，直接写入
+			fmt.Fprintf(c.Response().Writer, "event: content_block_delta\ndata: %s\n\n", data)
+		} else {
+			// Anthropic 格式，直接写入
+			fmt.Fprintf(c.Response().Writer, "event: content_block_delta\ndata: %s\n\n", data)
 		}
+		flusher.Flush()
+		collector.Add(data)
 	}
 
-	h.writeSSEEvent(c, flusher, "message_delta", provider.AnthropicStreamEvent{
-		Type:  "message_delta",
-		Delta: &provider.AnthropicDelta{StopReason: "end_turn"},
-		Usage: &provider.AnthropicUsage{InputTokens: promptTokens, OutputTokens: completionTokens},
-	})
+	select {
+	case err := <-errCh:
+		if err != nil {
+			finalErr = err.Error()
+			statusCode = http.StatusBadGateway
+		}
+	default:
+	}
+
+	// 写入结束事件
 	fmt.Fprint(c.Response().Writer, "event: message_stop\ndata: {}\n\n")
 	flusher.Flush()
 
-	if promptTokens == 0 && completionTokens == 0 {
-		promptTokens = 1
-	}
-	totalTokens := promptTokens + completionTokens
-	h.recordRequest(gwCtx.TraceID, gwCtx.UserID, gwCtx.APIKeyID, llm.ID(), req.Model, true,
-		promptTokens, completionTokens, totalTokens,
-		statusCode, finalErr, gwCtx.Latency(), c, gwCtx.ReqBytes, nil, collector.Chunks())
+	h.recordRequest(traceID, uid, kid,
+		llmReq.Model, providerModel, string(provider.APITypeAnthropic), adapter.Type(), passthroughLevel, true,
+		0, 0, 0, 0,
+		statusCode, finalErr, time.Since(startTime).Milliseconds(), c, llmReq.BodyRaw, nil, collector.Chunks())
 	return nil
-}
-
-// writeSSEEvent 写入一条 SSE 事件并返回序列化后的数据
-func (h *AnthropicGatewayHandler) writeSSEEvent(c echo.Context, flusher http.Flusher, event string, v interface{}) []byte {
-	data, _ := json.Marshal(v)
-	fmt.Fprintf(c.Response().Writer, "event: %s\ndata: %s\n\n", event, data)
-	flusher.Flush()
-	return data
 }

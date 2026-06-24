@@ -23,6 +23,17 @@ export const Route = createFileRoute('/request-logs')({
 
 const PAGE_SIZE = 20;
 
+const apiTypeLabels: Record<string, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+};
+
+const passthroughLabels: Record<string, string> = {
+  none: '正常路由',
+  user: '用户级透传',
+  provider: '提供商级透传',
+};
+
 function RequestLogsPage() {
   const { setBreadcrumbs } = useBreadcrumb();
   const [page, setPage] = useState(1);
@@ -38,7 +49,7 @@ function RequestLogsPage() {
     pagination: { index: page, size: PAGE_SIZE },
     filters: [
       ...(statusFilter ? [{ field: 'status_code', value: statusFilter === 'success' ? 200 : 500 }] : []),
-      ...(modelFilter ? [{ field: 'model_name', value: modelFilter }] : []),
+      ...(modelFilter ? [{ field: 'user_model', value: modelFilter }] : []),
     ],
   };
 
@@ -98,13 +109,15 @@ function RequestLogsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>时间</TableHead>
-                      <TableHead>模型</TableHead>
+                      <TableHead>用户模型</TableHead>
+                      <TableHead>提供商模型</TableHead>
+                      <TableHead>用户 API</TableHead>
+                      <TableHead>提供商 API</TableHead>
                       <TableHead>摘要</TableHead>
                       <TableHead>类型</TableHead>
                       <TableHead>状态</TableHead>
-                      <TableHead>延迟</TableHead>
+                      <TableHead>耗时</TableHead>
                       <TableHead>Token</TableHead>
-                      <TableHead>成本</TableHead>
                       <TableHead>IP</TableHead>
                       <TableHead className="w-16">详情</TableHead>
                     </TableRow>
@@ -112,7 +125,7 @@ function RequestLogsPage() {
                   <TableBody>
                     {logs.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={10} className="text-muted-foreground text-center">
+                        <TableCell colSpan={12} className="text-muted-foreground text-center">
                           暂无请求记录
                         </TableCell>
                       </TableRow>
@@ -122,7 +135,18 @@ function RequestLogsPage() {
                           <TableCell className="whitespace-nowrap text-xs">
                             {new Date(log.createdAt).toLocaleString()}
                           </TableCell>
-                          <TableCell className="font-mono text-xs">{log.modelName}</TableCell>
+                          <TableCell className="font-mono text-xs">{log.userModel}</TableCell>
+                          <TableCell className="font-mono text-xs">{log.providerModel}</TableCell>
+                          <TableCell>
+                            <Badge variant={log.userApiType === 'openai' ? 'default' : 'secondary'}>
+                              {apiTypeLabels[log.userApiType] ?? log.userApiType}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={log.providerApiType === 'openai' ? 'default' : 'secondary'}>
+                              {apiTypeLabels[log.providerApiType] ?? log.providerApiType}
+                            </Badge>
+                          </TableCell>
                           <TableCell className="max-w-[200px] truncate text-xs">{log.summary || '-'}</TableCell>
                           <TableCell>
                             <Badge variant={log.isStream ? 'secondary' : 'default'}>
@@ -134,9 +158,13 @@ function RequestLogsPage() {
                               {log.statusCode}
                             </Badge>
                           </TableCell>
-                          <TableCell>{log.latencyMs}ms</TableCell>
-                          <TableCell>{log.promptTokens + log.completionTokens}</TableCell>
-                          <TableCell>¥{log.cost.toFixed(4)}</TableCell>
+                          <TableCell>{log.duration}ms</TableCell>
+                          <TableCell>
+                            {log.promptTokens + log.completionTokens}
+                            {log.cachedTokens > 0 && (
+                              <span className="text-muted-foreground ml-1 text-xs">({log.cachedTokens} 缓存)</span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-xs">{log.ipAddress}</TableCell>
                           <TableCell>
                             <Button
@@ -188,14 +216,18 @@ function RequestLogDetail({ log, detail }: { log: RequestLog; detail?: RequestDe
     <div className="flex flex-col gap-4">
       <div className="grid gap-2 md:grid-cols-2">
         <DetailRow label="Trace ID" value={log.traceId} />
-        <DetailRow label="模型" value={log.modelName} />
+        <DetailRow label="用户模型" value={log.userModel} />
+        <DetailRow label="提供商模型" value={log.providerModel} />
+        <DetailRow label="用户 API 类型" value={apiTypeLabels[log.userApiType] ?? log.userApiType} />
+        <DetailRow label="提供商 API 类型" value={apiTypeLabels[log.providerApiType] ?? log.providerApiType} />
+        <DetailRow label="透传级别" value={passthroughLabels[log.passthroughLevel] ?? log.passthroughLevel} />
         <DetailRow label="摘要" value={log.summary || '-'} />
         <DetailRow label="类型" value={log.isStream ? '流式' : '非流式'} />
         <DetailRow label="状态码" value={String(log.statusCode)} />
-        <DetailRow label="延迟" value={`${log.latencyMs}ms`} />
+        <DetailRow label="耗时" value={`${log.duration}ms`} />
         <DetailRow label="Prompt Tokens" value={String(log.promptTokens)} />
         <DetailRow label="Completion Tokens" value={String(log.completionTokens)} />
-        <DetailRow label="成本" value={`¥${log.cost.toFixed(4)}`} />
+        <DetailRow label="Cached Tokens" value={String(log.cachedTokens)} />
         <DetailRow label="IP 地址" value={log.ipAddress} />
         <DetailRow label="User ID" value={String(log.userId)} />
       </div>

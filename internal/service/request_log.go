@@ -49,9 +49,9 @@ func extractSummary(reqBytes []byte) string {
 
 // RecordRequest 记录请求日志到 DuckDB
 func (s *RequestLogService) RecordRequest(traceID string, userID, apiKeyID uint,
-	providerName, modelName string, isStream bool,
-	promptTokens, completionTokens, totalTokens int,
-	statusCode int, errMsg string, latencyMs int64,
+	userModel, providerModel, userApiType, providerApiType, passthroughLevel string, isStream bool,
+	promptTokens, completionTokens, totalTokens, cachedTokens int,
+	statusCode int, errMsg string, duration int64,
 	ipAddress, userAgent string,
 	reqBytes, respBytes []byte, chunks []*model.RequestChunk) {
 
@@ -64,14 +64,14 @@ func (s *RequestLogService) RecordRequest(traceID string, userID, apiKeyID uint,
 
 	// 插入请求日志
 	_, err := s.store.Exec(`INSERT INTO request_logs
-		(trace_id, user_id, api_key_id, model_name, summary, is_stream,
-		 prompt_tokens, completion_tokens, total_tokens,
-		 is_detail, status_code, error_message, latency_ms, cost,
+		(trace_id, user_id, api_key_id, user_model, provider_model, user_api_type, provider_api_type, passthrough_level,
+		 summary, is_stream, prompt_tokens, completion_tokens, total_tokens, cached_tokens,
+		 is_detail, status_code, error_message, duration,
 		 ip_address, user_agent, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		traceID, userID, apiKeyID, modelName, summary, isStream,
-		promptTokens, completionTokens, totalTokens,
-		logDetail, statusCode, TruncateStr(errMsg, 4096), latencyMs, 0,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		traceID, userID, apiKeyID, userModel, providerModel, userApiType, providerApiType, passthroughLevel,
+		summary, isStream, promptTokens, completionTokens, totalTokens, cachedTokens,
+		logDetail, statusCode, TruncateStr(errMsg, 4096), duration,
 		ipAddress, TruncateStr(userAgent, 512), time.Now(),
 	)
 	if err != nil {

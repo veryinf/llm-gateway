@@ -114,8 +114,8 @@ func (h *ProviderHandler) AddProvider(c echo.Context) error {
 		Title:            input.Get("title").String(),
 		BaseURL:          input.Get("baseUrl").String(),
 		APIKey:           input.Get("apiKey").String(),
-		SupportOpenAI:    input.Get("supportOpenai").Bool(),
-		OpenAIBaseURL:    input.Get("openaiBaseUrl").String(),
+		SupportOpenai:    input.Get("supportOpenai").Bool(),
+		OpenaiBaseURL:    input.Get("openaiBaseUrl").String(),
 		SupportAnthropic: input.Get("supportAnthropic").Bool(),
 		AnthropicBaseURL: input.Get("anthropicBaseUrl").String(),
 		PreferredAPI:     input.Get("preferredApi").String(),
@@ -139,7 +139,7 @@ func (h *ProviderHandler) AddProvider(c echo.Context) error {
 	}
 
 	// 必须支持至少一种协议
-	if !p.SupportOpenAI && !p.SupportAnthropic {
+	if !p.SupportOpenai && !p.SupportAnthropic {
 		return h.Error(-11, "请至少支持一种协议（OpenAI 或 Anthropic）")
 	}
 
@@ -212,7 +212,7 @@ func (h *ProviderHandler) UpdateProvider(c echo.Context) error {
 		newState["base_url"] = baseURL
 	}
 
-	if input.Get("apiKey").Exists() {
+	if input.Get("apiKey").Exists() && input.Get("apiKey").String() != "" {
 		newState["api_key"] = input.Get("apiKey").String()
 	}
 
@@ -261,7 +261,7 @@ func (h *ProviderHandler) UpdateProvider(c echo.Context) error {
 				return h.Error(-24, "Provider 不存在")
 			}
 			if !input.Get("supportOpenai").Exists() {
-				sOpenAI = existing.SupportOpenAI
+				sOpenAI = existing.SupportOpenai
 			}
 			if !input.Get("supportAnthropic").Exists() {
 				sAnthropic = existing.SupportAnthropic

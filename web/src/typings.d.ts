@@ -20,7 +20,7 @@ declare namespace API {
   export interface SearchParams {
     kw?: string;
     filters?: { field: string, value: unknown; }[];
-    pagination?: { pageIndex: number, pageSize: number; };
+    pagination?: { index: number, size: number; };
   }
 
   export interface ResponseStruct {

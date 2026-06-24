@@ -2,7 +2,6 @@ package web
 
 import (
 	"context"
-	"database/sql"
 	"io/fs"
 	llmgateway "llm-gateway"
 	"llm-gateway/internal/core"
@@ -14,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"gorm.io/gorm"
@@ -23,7 +23,7 @@ var (
 	apiBizPrefix = "/api"
 )
 
-func InitHttpServer(db *gorm.DB, store *sql.DB, cfg *core.Config) *echo.Echo {
+func InitHttpServer(db *gorm.DB, store *sqlx.DB, cfg *core.Config) *echo.Echo {
 	tokenManager := common.NewTokenManager()
 
 	e := echo.New()
@@ -74,6 +74,10 @@ func InitHttpServer(db *gorm.DB, store *sql.DB, cfg *core.Config) *echo.Echo {
 
 	base := common.BaseHandler{DB: db, Store: store, TokenManager: tokenManager, Config: cfg}
 
+	// 初始化 Gateway 服务
+	routerSvc := service.NewRouterService(db)
+	logSvc := service.NewRequestLogService(store)
+
 	// 公共接口
 	bizApi := e.Group(apiBizPrefix)
 	bizApi.Use(common.LeMiddleware(common.LeMiddlewareConfig{
@@ -91,15 +95,21 @@ func InitHttpServer(db *gorm.DB, store *sql.DB, cfg *core.Config) *echo.Echo {
 	(&handlers.UserModelRouterHandler{BaseHandler: base}).RegisterRoutes(bizApi)
 	(&handlers.ProviderHandler{BaseHandler: base}).RegisterRoutes(bizApi)
 	(&handlers.ProviderModelHandler{BaseHandler: base}).RegisterRoutes(bizApi)
+	(&handlers.RequestLogHandler{BaseHandler: base}).RegisterRoutes(bizApi)
 	// Health check
 	(&handlers.HealthHandler{BaseHandler: base}).RegisterRoutes(bizApi)
 
 	// LLM Gateway API — uses ProxyMiddleware (sk- API Key)
+	gatewayBase := handlers.GatewayBase{
+		BaseHandler: base,
+		RouterSvc:   routerSvc,
+		LogSvc:      logSvc,
+	}
 	v1 := e.Group("/v1")
 	v1.Use(common.ProxyMiddleware())
-	(&handlers.OpenAIGatewayHandler{GatewayBase: handlers.GatewayBase{BaseHandler: base}}).RegisterRoutes(v1)
+	(&handlers.OpenAIGatewayHandler{GatewayBase: gatewayBase}).RegisterRoutes(v1)
 	anthropic := e.Group("/anthropic")
 	anthropic.Use(common.ProxyMiddleware())
-	(&handlers.AnthropicGatewayHandler{GatewayBase: handlers.GatewayBase{BaseHandler: base}}).RegisterRoutes(anthropic)
+	(&handlers.AnthropicGatewayHandler{GatewayBase: gatewayBase}).RegisterRoutes(anthropic)
 	return e
 }

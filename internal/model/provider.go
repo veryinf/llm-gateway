@@ -5,8 +5,8 @@ type Provider struct {
 	Title            string `json:"title"`
 	BaseURL          string `json:"baseUrl"`
 	APIKey           string `json:"apiKey,omitempty"`
-	SupportOpenAI    bool   `json:"supportOpenai"`
-	OpenAIBaseURL    string `json:"openaiBaseUrl,omitempty"`
+	SupportOpenai    bool   `json:"supportOpenai"`
+	OpenaiBaseURL    string `json:"openaiBaseUrl,omitempty"`
 	SupportAnthropic bool   `json:"supportAnthropic"`
 	AnthropicBaseURL string `json:"anthropicBaseUrl,omitempty"`
 	PreferredAPI     string `json:"preferredApi"`

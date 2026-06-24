@@ -7,24 +7,22 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 func InitDB(dataDir string) (*gorm.DB, *sql.DB) {
 	dbPath := filepath.Join(dataDir, "application.db")
 
 	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
-		Logger: logger.NewSlogLogger(slog.Default(), logger.Config{
-			SlowThreshold: 200 * time.Millisecond,
-			LogLevel:      logger.Info,
-			Colorful:      false,
-		}),
+		//Logger: logger.NewSlogLogger(slog.Default(), logger.Config{
+		//	SlowThreshold: 200 * time.Millisecond,
+		//	LogLevel:      logger.Info,
+		//	Colorful:      false,
+		//}),
 	})
 	if err != nil {
 		slog.Error("failed to connect application database", "error", err)
@@ -55,6 +53,7 @@ func InitDB(dataDir string) (*gorm.DB, *sql.DB) {
 		&model.Provider{},
 		&model.ProviderModel{},
 		&model.UserModel{},
+		&model.UserModelRouter{},
 		&model.User{},
 	); err != nil {
 		slog.Error("failed to migrate application database", "error", err)

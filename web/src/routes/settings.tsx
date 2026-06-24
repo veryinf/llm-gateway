@@ -1,18 +1,40 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { toast } from 'sonner';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { PageHeader } from '@/components/page-header';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useForm } from '@tanstack/react-form';
+import { z } from 'zod';
+import { Button } from '@/components/ui/button';
+import { Field, FieldGroup } from '@/components/ui/field';
+import { FormFieldInput, FormFieldSelect, FormFieldSwitch } from '@/components/form';
 import { Loading } from '@/components/loader';
-import { request } from '@/lib';
 import { useBreadcrumb } from '@/hooks/use-breadcrumb';
-import { configService, type Config } from '@/services/config';
+import { configService, CONFIG_KEYS } from '@/services/config';
 
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
 });
+
+const passthroughOptions = [
+  { label: '禁用透传', value: 'none' },
+  { label: '用户级透传', value: 'user' },
+  { label: '提供商级透传', value: 'provider' },
+];
+
+const settingsSchema = z.object({
+  logRetention: z.number().int().min(1, '必须是大于 0 的整数'),
+  passthrough: z.enum(['none', 'user', 'provider']),
+  requestDetail: z.boolean(),
+  requestRetentionDays: z.number().int().min(1, '必须是大于 0 的整数'),
+});
+
+type SettingType = z.infer<typeof settingsSchema>;
+const defaultSettingValue: SettingType = {
+  logRetention: 7,
+  passthrough: 'none',
+  requestDetail: false,
+  requestRetentionDays: 7,
+};
 
 function SettingsPage() {
   const { setBreadcrumbs } = useBreadcrumb();
@@ -22,37 +44,40 @@ function SettingsPage() {
     setBreadcrumbs([{ title: '设置' }]);
   }, []);
 
-  const { data: configs, isLoading } = useQuery({
+  const keys = Object.values(CONFIG_KEYS);
+  const { data: configObject, isLoading } = useQuery({
     queryKey: ['configs'],
-    queryFn: () => configService.list(),
-  });
-
-  const configMap = Object.fromEntries((configs?.dataSet ?? []).map((c: Config) => [c.key, c.value]));
-
-  const retentionMutation = useMutation({
-    mutationFn: (params: { key: string; value: string }) => configService.update(params.key, params.value),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['configs'] });
-      toast.success('保存成功');
-    },
-    onError: () => {
-      toast.error('保存失败');
+    queryFn: async () => {
+      const configMap = await configService.get(keys);
+      return {
+        logRetention: Number(configMap[CONFIG_KEYS.LOG_RETENTION]) || defaultSettingValue.logRetention,
+        passthrough: configMap[CONFIG_KEYS.ROUTER_PASSTHROUGH] || defaultSettingValue.passthrough,
+        requestDetail: configMap[CONFIG_KEYS.REQUEST_LOG_DETAIL] == 'true',
+        requestRetentionDays: Number(configMap[CONFIG_KEYS.REQUEST_RETENTION_DAYS]) || defaultSettingValue.requestRetentionDays,
+      } as SettingType;
     },
   });
 
-  const detailMutation = useMutation({
-    mutationFn: (value: string) =>
-      request.put('/admin/config/request-detail', { value }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['configs'] });
-      toast.success('开关已更新');
+  const form = useForm({
+    defaultValues: configObject ?? defaultSettingValue,
+    validators: {
+      onChange: settingsSchema,
     },
-    onError: () => {
-      toast.error('更新失败');
+    onSubmit: async ({ value }) => {
+      try {
+        await configService.save({
+          [CONFIG_KEYS.REQUEST_LOG_DETAIL]: value.requestDetail ? 'true' : 'false',
+          [CONFIG_KEYS.LOG_RETENTION]: String(value.logRetention),
+          [CONFIG_KEYS.ROUTER_PASSTHROUGH]: value.passthrough,
+          [CONFIG_KEYS.REQUEST_RETENTION_DAYS]: String(value.requestRetentionDays),
+        });
+        queryClient.invalidateQueries({ queryKey: ['configs'] });
+        toast.success('保存成功');
+      } catch {
+        toast.error('保存失败');
+      }
     },
   });
-
-  const logDetailEnabled = configMap['log_request_detail'] === 'true';
 
   if (isLoading) {
     return (
@@ -63,51 +88,73 @@ function SettingsPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4">
-      <PageHeader title="系统设置" description="管理系统全局配置参数" />
-
-      {/* Request Detail Toggle */}
-      <div className="rounded-lg border bg-card p-6">
-        <h3 className="mb-4 text-lg font-medium">请求详情记录</h3>
-        <div className="flex items-center gap-3">
-          <Switch
-            id="log-detail"
-            checked={logDetailEnabled}
-            onCheckedChange={(checked) => {
-              detailMutation.mutate(checked ? 'true' : 'false');
-            }}
-            disabled={detailMutation.isPending}
-          />
-          <Label htmlFor="log-detail" className="cursor-pointer">
-            {logDetailEnabled ? '已开启' : '已关闭'}
-          </Label>
-        </div>
-        <p className="text-muted-foreground mt-2 text-sm">
-          开启后将记录完整的请求/响应 body 数据。非流式请求记录在 response_body 字段，流式请求记录在 request_chunks 表中。
-        </p>
+    <div className="flex flex-col gap-4 p-4">
+      <div>
+        <h2 className="text-2xl font-semibold tracking-tight">系统设置</h2>
+        <p className="text-muted-foreground text-sm">管理系统全局配置参数</p>
       </div>
 
-      {/* Retention Config */}
-      <div className="rounded-lg border bg-card p-6">
-        <h3 className="mb-4 text-lg font-medium">数据保留</h3>
-        <div className="flex flex-col gap-4 max-w-xl">
-          <div className="flex items-center gap-4">
-            <Label htmlFor="retention-days" className="w-40 shrink-0">请求日志保留天数</Label>
-            <input
-              id="retention-days"
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          form.handleSubmit();
+        }}
+      >
+        <FieldGroup className="gap-4 max-w-2xl">
+          {/* 请求配置 */}
+          <div className="rounded-lg border bg-card p-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <FormFieldSwitch
+                form={form}
+                name="requestDetail"
+                title="请求详情记录"
+                description="记录完整的请求/响应 body 数据"
+                switchLabel="启用"
+              />
+              <FormFieldInput
+                form={form}
+                name="requestRetentionDays"
+                title="请求日志保留天数"
+                type="number"
+                description="超过此天数的请求日志和流式 chunks 将被自动清理，默认 7 天"
+              />
+            </div>
+          </div>
+
+          {/* 日志文件配置 */}
+          <div className="rounded-lg border bg-card p-4">
+            <FormFieldInput
+              form={form}
+              name="logRetention"
+              title="日志文件保留天数"
               type="number"
-              defaultValue={configMap['request_log_retention_days'] ?? '90'}
-              onBlur={(e) => {
-                retentionMutation.mutate({ key: 'request_log_retention_days', value: e.target.value });
-              }}
-              className="border-input bg-background ring-ring h-9 w-32 rounded-md border px-3 text-sm"
+              description="超过此天数的日志文件将被自动清理，默认 7 天"
             />
           </div>
-          <p className="text-muted-foreground text-sm">
-            超过此天数的请求日志和流式 chunks 将被自动清理。
-          </p>
-        </div>
-      </div>
+
+          {/* 路由配置 */}
+          <div className="rounded-lg border bg-card p-4">
+            <FormFieldSelect
+              form={form}
+              name="passthrough"
+              title="透传级别"
+              options={passthroughOptions}
+              description={<>用户级：跳过 UserModel 直接匹配 ProviderModel<br />提供商级：跳过 ProviderModel 直接使用默认 Provider</>}
+            />
+          </div>
+
+          {/* 保存按钮 */}
+          <Field>
+            <form.Subscribe>
+              {(state) => (
+                <Button type="submit" disabled={state.isSubmitting}>
+                  {state.isSubmitting ? '保存中...' : '保存设置'}
+                </Button>
+              )}
+            </form.Subscribe>
+          </Field>
+        </FieldGroup>
+      </form>
     </div>
   );
 }

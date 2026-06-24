@@ -53,12 +53,11 @@ func StartServer(cfg *core.Config) {
 
 	// 初始化分析时序库
 	store := database.InitStore(cfg.DataDir)
-	defer func(sqlStore *sql.DB) {
-		err := store.Close()
-		if err != nil {
+	defer func() {
+		if err := store.Close(); err != nil {
 			slog.Error("Error closing store database connection", "error", err.Error())
 		}
-	}(store)
+	}()
 
 	webServer := web.InitHttpServer(db, store, cfg)
 	defer func(webServer *echo.Echo) {

@@ -10,6 +10,12 @@ const (
 	// 值为 "user" 时启用一级透传：跳过 UserModel，直接匹配 ProviderModel
 	// 值为 "provider" 时启用两级透传：跳过 ProviderModel，直接使用 default Provider
 	ConfigKeyRouterPassthrough = "system.router.passthrough"
+
+	// ConfigKeyRequestLogDetail 是否记录完整请求/响应 body，值为 "true" 或 "false"，默认 "false"
+	ConfigKeyRequestLogDetail = "system.request.log_detail"
+
+	// ConfigKeyRequestRetentionDays 请求日志保留天数，值为整数字符串，默认 90
+	ConfigKeyRequestRetentionDays = "system.request.retention_days"
 )
 
 type Config struct {

@@ -1,13 +1,13 @@
 package common
 
 import (
-	"database/sql"
 	"io"
 	"log/slog"
 	"net/http"
 
 	"llm-gateway/internal/core"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 	"github.com/tidwall/gjson"
 	"gorm.io/gorm"
@@ -15,7 +15,7 @@ import (
 
 type BaseHandler struct {
 	DB           *gorm.DB
-	Store        *sql.DB
+	Store        *sqlx.DB
 	Config       *core.Config
 	TokenManager *TokenManager
 }

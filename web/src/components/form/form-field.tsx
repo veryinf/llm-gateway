@@ -20,7 +20,7 @@ export type FormFieldProps<T extends any> = {
   form: EasyFormApi<T>;
   name: string;
   title?: string;
-  description?: string;
+  description?: string | React.ReactNode;
   tips?: string;
   placeholder?: string;
   required?: boolean;
@@ -59,7 +59,7 @@ export function FormField<T extends any = any>(props: FormFieldProps<T> & { chil
       )}
       {isFunction(props.children) ? props.children(field, isInvalid) : props.children}
       {props.description && <FieldDescription>{props.description}</FieldDescription>}
-      {isInvalid && <FieldError errors={field.state.meta.errors.map((e) => ({ message: e }))} />}
+      {isInvalid && <FieldError errors={field.state.meta.errors.map((e) => ({ message: typeof e === 'string' ? e : (e as any)?.message ?? String(e) }))} />}
     </Field>
   );
 }
@@ -160,7 +160,7 @@ export function FormFieldSelect<T extends any = any>(props: FormFieldProps<T> & 
     >
       {(field, isInvalid) => {
         return (
-          <Select value={field.state.value} onValueChange={(value) => field.handleChange(value)}>
+          <Select value={field.state.value} onValueChange={(value) => value && field.handleChange(value)}>
             <SelectTrigger id={field.name} aria-invalid={isInvalid}>
               <SelectValue placeholder={props.placeholder} />
             </SelectTrigger>

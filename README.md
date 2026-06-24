@@ -143,30 +143,46 @@ curl http://localhost:3001/v1/chat/completions \
 
 通过 CLI 参数或环境变量配置，无需配置文件：
 
+### CLI 参数配置
+
+启动时通过命令行参数传入，支持环境变量：
+
 | 参数 | 环境变量 | 默认值 | 说明 |
 |---|---|---|---|
 | `--http-addr` | `HTTP_ADDR` | `:3001` | 监听地址 |
 | `--data-dir` | `DATA_DIR` | `./db` | 数据目录（数据库、日志等） |
-| `--admin-password` | `ADMIN_PASSWORD` | 空 | 管理员初始密码（空则不自动创建） |
-| `--api-key-prefix` | `API_KEY_PREFIX` | `sk-` | API Key 前缀 |
-| `--default-qpm` | `DEFAULT_QPM` | `60` | 每 Key 默认 QPM 限流 |
-| `--global-qpm` | `GLOBAL_QPM` | `10000` | 全局 QPM 限流上限 |
-| `--stats-buffer-size` | `STATS_BUFFER_SIZE` | `1000` | 统计缓冲区大小 |
-| `--stats-flush-interval` | `STATS_FLUSH_INTERVAL` | `5s` | 统计刷盘间隔 |
-| `--stats-flush-batch` | `STATS_FLUSH_BATCH` | `100` | 统计刷盘批次 |
-| `--request-log-retention-days` | `REQUEST_LOG_RETENTION_DAYS` | `90` | 请求日志保留天数 |
 | `--log` | `LOG` | `console` | 日志输出：`console` / `file` / `both` |
 | `--log-level` | `LOG_LEVEL` | `info` | 日志级别：`debug` / `info` / `warn` / `error` |
 
 **示例：**
 
 ```powershell
-.\build.ps1 dev -- --admin-password mypass --http-addr :8080
+.\build.ps1 dev -- --http-addr :8080 --data-dir ./mydata --log both --log-level debug
 ```
 
 ```bash
-go run ./cmd/gateway/ --admin-password mypass --http-addr :8080
+go run ./cmd/ -- --http-addr :8080 --data-dir ./mydata
 ```
+
+### 数据库配置
+
+通过 Web 管理后台 → 设置页面配置，存储在 SQLite `configs` 表中：
+
+| 配置键 | 默认值 | 说明 |
+|---|---|---|
+| `system.log.retention` | `7` | 日志文件保留天数 |
+| `system.router.passthrough` | `none` | 透传级别：`none` / `user` / `provider` |
+| `system.request.retention_days` | `90` | 请求日志保留天数 |
+| `system.request.log_detail` | `false` | 是否记录完整请求/响应 body |
+
+### 默认管理员账号
+
+首次启动自动创建默认管理员账号（仅当数据库为空时）：
+
+- 用户名：`root`
+- 密码：`123456`
+
+> 请在首次登录后立即修改密码。
 
 ## 🖥️ 管理后台
 

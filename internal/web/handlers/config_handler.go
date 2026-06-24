@@ -4,7 +4,6 @@ import (
 	"llm-gateway/internal/service"
 	"llm-gateway/internal/web/common"
 
-	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/labstack/echo/v4"
 )
 
@@ -12,52 +11,51 @@ type ConfigHandler struct {
 	common.BaseHandler
 }
 
-// GetConfig 读取配置项
-// POST /api/v1/config  body: {"key": "mqtt"}
+// GetConfig 读取配置项（支持批量）
+// POST /api/admin/config/get  body: {"keys": ["mqtt", "http.addr"]}
 func (h *ConfigHandler) GetConfig(c echo.Context) error {
 	input := &struct {
-		Key string `json:"key"`
+		Keys []string `json:"keys"`
 	}{}
 	if err := c.Bind(input); err != nil {
 		return err
 	}
-	if err := validation.ValidateStruct(input,
-		validation.Field(&input.Key, validation.Required),
-	); err != nil {
-		return err
+	if len(input.Keys) == 0 {
+		return h.Error(-1, "keys is required")
 	}
 
-	config := service.GetConfigRaw(input.Key)
-	if config == nil {
-		return common.NewData[any](nil)
+	result := make(map[string]any, len(input.Keys))
+	for _, key := range input.Keys {
+		config := service.GetConfigRaw(key)
+		if config != nil {
+			result[key] = config.Value
+		}
 	}
-	return common.NewData(config)
+	return common.NewData(result)
 }
 
-// SaveConfig 保存配置项
-// POST /api/v1/config/save  body: {"key": "mqtt.listen", "value": ":1883"}
+// SaveConfig 批量保存配置项
+// PUT /api/admin/config/save  body: {"configs": {"mqtt.listen": ":1883", "http.addr": ":3001"}}
 func (h *ConfigHandler) SaveConfig(c echo.Context) error {
 	input := &struct {
-		Key   string `json:"key"`
-		Value string `json:"value"`
+		Configs map[string]string `json:"configs"`
 	}{}
 	if err := c.Bind(input); err != nil {
 		return err
 	}
-	if err := validation.ValidateStruct(input,
-		validation.Field(&input.Key, validation.Required),
-	); err != nil {
-		return err
+	if len(input.Configs) == 0 {
+		return h.Error(-1, "configs is required")
 	}
 
-	// 直接存储原始字符串值，不经过 json.Marshal（SetConfigWithDesc 会对 string 双重编码）
-	if err := service.SetConfigRaw(input.Key, input.Value); err != nil {
-		return h.Error(-1, err.Error())
+	for key, value := range input.Configs {
+		if err := service.SetConfigRaw(key, value); err != nil {
+			return h.Error(-1, err.Error())
+		}
 	}
 	return h.Success()
 }
 
 func (h *ConfigHandler) RegisterRoutes(g *echo.Group) {
-	g.POST("/config", h.GetConfig)
+	g.POST("/config/get", h.GetConfig)
 	g.POST("/config/save", h.SaveConfig)
 }

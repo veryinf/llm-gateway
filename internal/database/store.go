@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	_ "github.com/duckdb/duckdb-go/v2"
 )
 
@@ -24,9 +25,9 @@ const (
 	StatsFlushBatch    = 100
 )
 
-func InitStore(dataDir string) *sql.DB {
+func InitStore(dataDir string) *sqlx.DB {
 	dbPath := filepath.Join(dataDir, "store.duckdb")
-	db, err := sql.Open("duckdb", dbPath)
+	db, err := sqlx.Open("duckdb", dbPath)
 	if err != nil {
 		slog.Error("failed to open duckdb database", "error", err)
 		os.Exit(1)
@@ -36,7 +37,11 @@ func InitStore(dataDir string) *sql.DB {
 		os.Exit(1)
 	}
 
-	if err := runMigrations(db); err != nil {
+	// 配置连接池
+	db.SetMaxOpenConns(10)  // 最大打开连接数
+	db.SetMaxIdleConns(5)   // 最大空闲连接数
+
+	if err := runMigrations(db.DB); err != nil {
 		slog.Error("failed to run duckdb migrations", "error", err)
 		os.Exit(1)
 	}

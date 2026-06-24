@@ -8,7 +8,14 @@ import { Loading } from '@/components/loader';
 import { PageHeader } from '@/components/page-header';
 import { useBreadcrumb } from '@/hooks/use-breadcrumb';
 import { useModal } from '@/components/modal';
-import { requestLogService, type RequestLogEntry } from '@/services/request-log';
+import {
+  requestLogService,
+  requestDetailService,
+  requestChunkService,
+  type RequestLog,
+  type RequestDetail,
+} from '@/services/request-log';
+import type { API } from '@/typings';
 
 export const Route = createFileRoute('/request-logs')({
   component: RequestLogsPage,
@@ -21,24 +28,36 @@ function RequestLogsPage() {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
   const [modelFilter, setModelFilter] = useState('');
-  const { Modal, modalHandler, meta } = useModal<RequestLogEntry>();
+  const { Modal, modalHandler, meta } = useModal<{ log: RequestLog; detail?: RequestDetail }>();
 
   useEffect(() => {
     setBreadcrumbs([{ title: '请求记录' }]);
   }, []);
 
+  const searchParams: API.SearchParams = {
+    pagination: { index: page, size: PAGE_SIZE },
+    filters: [
+      ...(statusFilter ? [{ field: 'status_code', value: statusFilter === 'success' ? 200 : 500 }] : []),
+      ...(modelFilter ? [{ field: 'model_name', value: modelFilter }] : []),
+    ],
+  };
+
   const { data, isLoading } = useQuery({
     queryKey: ['request-logs', page, statusFilter, modelFilter],
-    queryFn: () =>
-      requestLogService.search({
-        page,
-        pageSize: PAGE_SIZE,
-        status: statusFilter || undefined,
-        model: modelFilter || undefined,
-      }),
+    queryFn: () => requestLogService.search(searchParams),
   });
 
-  const totalPages = Math.ceil((data?.total ?? 0) / PAGE_SIZE);
+  const logs = data?.dataSet ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  const handleViewDetail = async (log: RequestLog) => {
+    let detail: RequestDetail | undefined;
+    if (log.isDetail) {
+      detail = await requestDetailService.fetch(log.traceId);
+    }
+    modalHandler.open('请求详情', '', { log, detail });
+  };
 
   return (
     <div className="flex flex-1 flex-col">
@@ -64,7 +83,7 @@ function RequestLogsPage() {
               className="border-input bg-background ring-ring h-9 w-48 rounded-md border px-3 text-sm"
             />
             <div className="text-muted-foreground ml-auto text-sm">
-              共 {data?.total ?? 0} 条记录
+              共 {total} 条记录
             </div>
           </div>
 
@@ -80,6 +99,7 @@ function RequestLogsPage() {
                     <TableRow>
                       <TableHead>时间</TableHead>
                       <TableHead>模型</TableHead>
+                      <TableHead>摘要</TableHead>
                       <TableHead>类型</TableHead>
                       <TableHead>状态</TableHead>
                       <TableHead>延迟</TableHead>
@@ -90,38 +110,39 @@ function RequestLogsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(data?.list ?? []).length === 0 ? (
+                    {logs.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-muted-foreground text-center">
+                        <TableCell colSpan={10} className="text-muted-foreground text-center">
                           暂无请求记录
                         </TableCell>
                       </TableRow>
                     ) : (
-                      (data?.list ?? []).map((log, i) => (
-                        <TableRow key={`${log.trace_id}-${i}`}>
+                      logs.map((log, i) => (
+                        <TableRow key={`${log.traceId}-${i}`}>
                           <TableCell className="whitespace-nowrap text-xs">
-                            {new Date(log.created_at).toLocaleString()}
+                            {new Date(log.createdAt).toLocaleString()}
                           </TableCell>
-                          <TableCell className="font-mono text-xs">{log.model_name}</TableCell>
+                          <TableCell className="font-mono text-xs">{log.modelName}</TableCell>
+                          <TableCell className="max-w-[200px] truncate text-xs">{log.summary || '-'}</TableCell>
                           <TableCell>
-                            <Badge variant={log.is_stream ? 'secondary' : 'default'}>
-                              {log.is_stream ? '流式' : '非流式'}
+                            <Badge variant={log.isStream ? 'secondary' : 'default'}>
+                              {log.isStream ? '流式' : '非流式'}
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <Badge variant={log.status_code === 200 ? 'default' : 'destructive'}>
-                              {log.status_code}
+                            <Badge variant={log.statusCode === 200 ? 'default' : 'destructive'}>
+                              {log.statusCode}
                             </Badge>
                           </TableCell>
-                          <TableCell>{log.latency_ms}ms</TableCell>
-                          <TableCell>{log.prompt_tokens + log.completion_tokens}</TableCell>
+                          <TableCell>{log.latencyMs}ms</TableCell>
+                          <TableCell>{log.promptTokens + log.completionTokens}</TableCell>
                           <TableCell>¥{log.cost.toFixed(4)}</TableCell>
-                          <TableCell className="text-xs">{log.ip_address}</TableCell>
+                          <TableCell className="text-xs">{log.ipAddress}</TableCell>
                           <TableCell>
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => modalHandler.open('请求详情', '', log)}
+                              onClick={() => handleViewDetail(log)}
                             >
                               查看
                             </Button>
@@ -150,60 +171,61 @@ function RequestLogsPage() {
       </div>
 
       <Modal>
-        {meta && <RequestLogDetail log={meta} />}
+        {meta && <RequestLogDetail log={meta.log} detail={meta.detail} />}
       </Modal>
     </div>
   );
 }
 
-function RequestLogDetail({ log }: { log: RequestLogEntry }) {
+function RequestLogDetail({ log, detail }: { log: RequestLog; detail?: RequestDetail }) {
   const { data: chunks, isLoading: chunksLoading } = useQuery({
-    queryKey: ['request-chunks', log.trace_id],
-    queryFn: () => requestLogService.fetchChunks(log.trace_id),
-    enabled: log.is_stream && log.is_detail,
+    queryKey: ['request-chunks', log.traceId],
+    queryFn: () => requestChunkService.fetch(log.traceId),
+    enabled: log.isStream && log.isDetail,
   });
 
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-2 md:grid-cols-2">
-        <DetailRow label="Trace ID" value={log.trace_id} />
-        <DetailRow label="模型" value={log.model_name} />
-        <DetailRow label="类型" value={log.is_stream ? '流式' : '非流式'} />
-        <DetailRow label="状态码" value={String(log.status_code)} />
-        <DetailRow label="延迟" value={`${log.latency_ms}ms`} />
-        <DetailRow label="Prompt Tokens" value={String(log.prompt_tokens)} />
-        <DetailRow label="Completion Tokens" value={String(log.completion_tokens)} />
+        <DetailRow label="Trace ID" value={log.traceId} />
+        <DetailRow label="模型" value={log.modelName} />
+        <DetailRow label="摘要" value={log.summary || '-'} />
+        <DetailRow label="类型" value={log.isStream ? '流式' : '非流式'} />
+        <DetailRow label="状态码" value={String(log.statusCode)} />
+        <DetailRow label="延迟" value={`${log.latencyMs}ms`} />
+        <DetailRow label="Prompt Tokens" value={String(log.promptTokens)} />
+        <DetailRow label="Completion Tokens" value={String(log.completionTokens)} />
         <DetailRow label="成本" value={`¥${log.cost.toFixed(4)}`} />
-        <DetailRow label="IP 地址" value={log.ip_address} />
-        <DetailRow label="User ID" value={String(log.user_id)} />
+        <DetailRow label="IP 地址" value={log.ipAddress} />
+        <DetailRow label="User ID" value={String(log.userId)} />
       </div>
 
-      {log.error_message && (
+      {log.errorMessage && (
         <div>
           <span className="text-muted-foreground text-sm">错误信息：</span>
-          <pre className="bg-muted mt-1 overflow-auto rounded p-3 text-sm">{log.error_message}</pre>
+          <pre className="bg-muted mt-1 overflow-auto rounded p-3 text-sm">{log.errorMessage}</pre>
         </div>
       )}
 
-      {log.request_body && (
+      {detail?.requestBody && (
         <div>
           <span className="text-muted-foreground text-sm">请求 Body：</span>
           <pre className="bg-muted mt-1 overflow-auto rounded p-3 text-sm max-h-60">
-            {formatJson(log.request_body)}
+            {formatJson(detail.requestBody)}
           </pre>
         </div>
       )}
 
-      {log.response_body && (
+      {detail?.responseBody && (
         <div>
           <span className="text-muted-foreground text-sm">响应 Body：</span>
           <pre className="bg-muted mt-1 overflow-auto rounded p-3 text-sm max-h-60">
-            {formatJson(log.response_body)}
+            {formatJson(detail.responseBody)}
           </pre>
         </div>
       )}
 
-      {log.is_stream && log.is_detail && (
+      {log.isStream && log.isDetail && (
         <div>
           <span className="text-muted-foreground text-sm">流式响应：</span>
           {chunksLoading ? (
@@ -221,8 +243,8 @@ function RequestLogDetail({ log }: { log: RequestLogEntry }) {
                 </summary>
                 <div className="bg-muted mt-1 max-h-60 overflow-auto rounded p-3">
                   {chunks.slice(0, 100).map((chunk) => (
-                    <pre key={chunk.chunk_index} className="mt-1 border-b border-gray-700 pb-1 text-xs break-all">
-                      [{chunk.chunk_index}] {formatChunkData(chunk.chunk_data)}
+                    <pre key={chunk.index} className="mt-1 border-b border-gray-700 pb-1 text-xs break-all">
+                      [{chunk.index}] {formatChunkData(chunk.data)}
                     </pre>
                   ))}
                   {chunks.length > 100 && (
@@ -259,12 +281,12 @@ function formatJson(str: string): string {
   }
 }
 
-function assembleStreamContent(chunks: { chunk_data: string }[]): string {
+function assembleStreamContent(chunks: { data: string }[]): string {
   const parts: string[] = [];
   for (const chunk of chunks) {
     try {
-      const data = JSON.parse(chunk.chunk_data);
-      const delta = data.choices?.[0]?.delta;
+      const parsed = JSON.parse(chunk.data);
+      const delta = parsed.choices?.[0]?.delta;
       if (delta?.content) {
         parts.push(delta.content);
       }

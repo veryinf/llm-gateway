@@ -3,7 +3,6 @@ package provider
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -34,10 +33,12 @@ func newHTTPClient() *http.Client {
 
 // SSEEvent 表示一个 Server-Sent Event
 type SSEEvent struct {
-	Data string
+	Event string
+	Data  string
 }
 
 // ReadSSE 从 io.Reader 中读取 SSE 事件流，通过 channel 返回
+// 支持 event 字段和多行 data 拼接
 func ReadSSE(ctx context.Context, r io.Reader) <-chan SSEEvent {
 	ch := make(chan SSEEvent, 100)
 	go func() {
@@ -45,21 +46,43 @@ func ReadSSE(ctx context.Context, r io.Reader) <-chan SSEEvent {
 		scanner := bufio.NewScanner(r)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
+		var event SSEEvent
 		for scanner.Scan() {
 			select {
 			case <-ctx.Done():
 				return
 			default:
 			}
-			line := strings.TrimSpace(scanner.Text())
-			if line == "" || !strings.HasPrefix(line, "data:") {
+
+			line := scanner.Text()
+
+			// 空行表示事件结束
+			if line == "" {
+				if event.Data != "" {
+					if event.Data == "[DONE]" {
+						return
+					}
+					ch <- event
+					event = SSEEvent{}
+				}
 				continue
 			}
-			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-			if data == "[DONE]" {
-				return
+
+			if strings.HasPrefix(line, "event:") {
+				event.Event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+			} else if strings.HasPrefix(line, "data:") {
+				data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+				if event.Data == "" {
+					event.Data = data
+				} else {
+					event.Data += "\n" + data
+				}
 			}
-			ch <- SSEEvent{Data: data}
+		}
+
+		// 处理最后一个事件（没有以空行结束的情况）
+		if event.Data != "" && event.Data != "[DONE]" {
+			ch <- event
 		}
 	}()
 	return ch
@@ -69,12 +92,4 @@ func ReadSSE(ctx context.Context, r io.Reader) <-chan SSEEvent {
 func handleHTTPError(resp *http.Response, prefix string) error {
 	body, _ := io.ReadAll(resp.Body)
 	return fmt.Errorf("%s api error: status=%d body=%s", prefix, resp.StatusCode, string(body))
-}
-
-// decodeJSON 解码 JSON 响应体到目标结构
-func decodeJSON(resp *http.Response, v any) error {
-	if err := json.NewDecoder(resp.Body).Decode(v); err != nil {
-		return fmt.Errorf("decode response: %w", err)
-	}
-	return nil
 }

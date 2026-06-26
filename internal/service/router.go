@@ -9,6 +9,22 @@ import (
 	"gorm.io/gorm"
 )
 
+// RouterResult 模型解析结果
+type RouterResult struct {
+	Adapter           *provider.Adapter
+	UserModelName     string
+	ProviderModelName string                   // Provider 模型名称
+	Level             model.PassthroughLevel //实际生效的透传级别
+}
+
+// ProviderAPIType 返回 Provider 实际使用的 API 类型（优先 OpenAI）
+func (r *RouterResult) ProviderAPIType() model.LLMAPIType {
+	if r.Adapter.SupportOpenAI() {
+		return model.APITypeOpenAI
+	}
+	return model.APITypeAnthropic
+}
+
 type RouterService struct {
 	db *gorm.DB
 }
@@ -18,87 +34,112 @@ func NewRouterService(db *gorm.DB) *RouterService {
 }
 
 // ResolveProvider 根据模型名称解析到对应的 Provider
-// 返回: adapter, providerModelName, passthroughLevel, error
-func (s *RouterService) ResolveProvider(modelName string) (*provider.Adapter, string, string, error) {
+func (s *RouterService) ResolveProvider(inputModel string) (*RouterResult, error) {
+	level := s.getPassthroughLevel()
+
 	var userModel model.UserModel
-	if err := s.db.Where("name = ? AND is_active = ?", modelName, true).First(&userModel).Error; err != nil {
-		// UserModel 找不到，检查透传级别
-		level := s.getPassthroughLevel()
-		if level == "none" {
-			return nil, "", "none", fmt.Errorf("model %q not found", modelName)
+	if err := s.db.Where("name = ? AND is_active = ?", inputModel, true).First(&userModel).Error; err != nil {
+		if level == model.PassthroughLevelNone {
+			return nil, fmt.Errorf("model %q not found", inputModel)
 		}
-		p, pmName, err := s.resolveProviderByModelName(modelName, level)
-		return p, pmName, level, err
+		return s.resolveByPassthrough(inputModel, level)
 	}
 
-	var routerEntry model.UserModelRouter
-	if err := s.db.Where("user_model_id = ?", userModel.UserModelID).
-		Order("priority ASC, router_id ASC").
-		First(&routerEntry).Error; err != nil {
-		return nil, "", "none", fmt.Errorf("no router entry for model %q", modelName)
+	var userModelRouter model.UserModelRouter
+	if err := s.db.Where("user_model_id = ?", userModel.UserModelID).Order("priority ASC, router_id ASC").First(&userModelRouter).Error; err != nil {
+		if level == model.PassthroughLevelNone {
+			return nil, fmt.Errorf("no router entry for model %q", inputModel)
+		}
+		return s.resolveByPassthrough(inputModel, level)
 	}
 
 	var providerModel model.ProviderModel
-	if err := s.db.Where("model_id = ? AND is_active = ?", routerEntry.ProviderModelID, true).
-		First(&providerModel).Error; err != nil {
-		return nil, "", "none", fmt.Errorf("provider model %d not found", routerEntry.ProviderModelID)
-	}
-
-	var prov model.Provider
-	if err := s.db.Where("provider_id = ? AND is_active = ?", providerModel.ProviderID, true).
-		First(&prov).Error; err != nil {
-		return nil, "", "none", fmt.Errorf("provider %d not found", providerModel.ProviderID)
-	}
-
-	p, err := CreateProviderAdapter(prov)
-	return p, providerModel.Name, "none", err
-}
-
-// getPassthroughLevel 获取透传级别配置
-func (s *RouterService) getPassthroughLevel() string {
-	var config model.Config
-	if err := s.db.Where("key = ?", model.ConfigKeyRouterPassthrough).First(&config).Error; err != nil {
-		return "none"
-	}
-	switch config.Value {
-	case "user", "provider":
-		return config.Value
-	default:
-		return "none"
-	}
-}
-
-// resolveProviderByModelName 透传：直接匹配 ProviderModel
-func (s *RouterService) resolveProviderByModelName(modelName, level string) (*provider.Adapter, string, error) {
-	var providerModel model.ProviderModel
-	if err := s.db.Where("name = ? AND is_active = ?", modelName, true).First(&providerModel).Error; err != nil {
-		if level == "provider" {
-			return s.resolveProviderByDefault(modelName)
+	if err := s.db.Where("model_id = ? AND is_active = ?", userModelRouter.ProviderModelID, true).First(&providerModel).Error; err != nil {
+		if level != model.PassthroughLevelProvider {
+			return nil, fmt.Errorf("provider model %d not found", userModelRouter.ProviderModelID)
 		}
-		return nil, "", fmt.Errorf("model %q not found in provider models", modelName)
+		return s.resolveByDefaultProvider(inputModel)
 	}
 
 	var prov model.Provider
 	if err := s.db.Where("provider_id = ? AND is_active = ?", providerModel.ProviderID, true).First(&prov).Error; err != nil {
-		return nil, "", fmt.Errorf("provider %d not found", providerModel.ProviderID)
+		if level != model.PassthroughLevelProvider {
+			return nil, fmt.Errorf("provider %d not found", providerModel.ProviderID)
+		}
+		return s.resolveByDefaultProvider(inputModel)
 	}
 
-	p, err := CreateProviderAdapter(prov)
-	return p, providerModel.Name, err
+	adapter, err := provider.NewAdapter(&prov)
+	if err != nil {
+		return nil, err
+	}
+
+	return &RouterResult{
+		Adapter:           adapter,
+		UserModelName:     inputModel,
+		ProviderModelName: providerModel.Name,
+		Level:             model.PassthroughLevelNone,
+	}, nil
 }
 
-// resolveProviderByDefault 二级透传：使用 default Provider
-func (s *RouterService) resolveProviderByDefault(modelName string) (*provider.Adapter, string, error) {
+// getPassthroughLevel 获取透传级别配置
+func (s *RouterService) getPassthroughLevel() model.PassthroughLevel {
+	level := GetConfigStringOrDefault(model.ConfigKeyRouterPassthrough, "none")
+	switch level {
+	case "user", "provider":
+		return model.PassthroughLevel(level)
+	default:
+		return model.PassthroughLevelNone
+	}
+}
+
+// resolveByPassthrough 透传模式：直接匹配 ProviderModel
+func (s *RouterService) resolveByPassthrough(inputModel string, level model.PassthroughLevel) (*RouterResult, error) {
+	var providerModel model.ProviderModel
+	if err := s.db.Where("name = ? AND is_active = ?", inputModel, true).First(&providerModel).Error; err != nil {
+		if level != model.PassthroughLevelProvider {
+			return nil, fmt.Errorf("model %q not found in provider models", inputModel)
+		}
+		return s.resolveByDefaultProvider(inputModel)
+	}
+
+	var prov model.Provider
+	if err := s.db.Where("provider_id = ? AND is_active = ?", providerModel.ProviderID, true).First(&prov).Error; err != nil {
+		if level != model.PassthroughLevelProvider {
+			return nil, fmt.Errorf("provider %d not found", providerModel.ProviderID)
+		}
+		return s.resolveByDefaultProvider(inputModel)
+	}
+
+	adapter, err := provider.NewAdapter(&prov)
+	if err != nil {
+		return nil, err
+	}
+
+	return &RouterResult{
+		Adapter:           adapter,
+		UserModelName:     inputModel,
+		ProviderModelName: providerModel.Name,
+		Level:             model.PassthroughLevelUser,
+	}, nil
+}
+
+// resolveByDefaultProvider 二级透传：使用 default Provider
+func (s *RouterService) resolveByDefaultProvider(inputModel string) (*RouterResult, error) {
 	var prov model.Provider
 	if err := s.db.Where("is_default = ? AND is_active = ?", true, true).First(&prov).Error; err != nil {
-		return nil, "", fmt.Errorf("no default provider configured for model %q", modelName)
+		return nil, fmt.Errorf("no default provider configured for model %q", inputModel)
 	}
 
-	p, err := CreateProviderAdapter(prov)
-	return p, modelName, err
-}
+	adapter, err := provider.NewAdapter(&prov)
+	if err != nil {
+		return nil, err
+	}
 
-// CreateProviderAdapter 根据 provider 配置创建适配器
-func CreateProviderAdapter(p model.Provider) (*provider.Adapter, error) {
-	return provider.NewAdapter(&p)
+	return &RouterResult{
+		Adapter:           adapter,
+		UserModelName:     inputModel,
+		ProviderModelName: inputModel,
+		Level:             model.PassthroughLevelProvider,
+	}, nil
 }

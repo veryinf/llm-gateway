@@ -7,7 +7,6 @@ import (
 	"llm-gateway/internal/model"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/tidwall/gjson"
 )
 
 type RequestLogService struct {
@@ -18,91 +17,57 @@ func NewRequestLogService(store *sqlx.DB) *RequestLogService {
 	return &RequestLogService{store: store}
 }
 
-// isDetailEnabled 从数据库读取配置判断是否记录详细请求/响应
-func (s *RequestLogService) isDetailEnabled() bool {
+// IsDetailEnabled 判断是否记录详细请求/响应
+func (s *RequestLogService) IsDetailEnabled() bool {
 	return GetConfigString(model.ConfigKeyRequestLogDetail) == "true"
 }
 
-// extractSummary 从请求体中提取最后的用户问题作为摘要
-func extractSummary(reqBytes []byte) string {
-	if len(reqBytes) == 0 {
-		return ""
-	}
-	result := gjson.ParseBytes(reqBytes)
-	messages := result.Get("messages")
-	if !messages.IsArray() {
-		return ""
-	}
-	// 从后往前找最后一条 user 消息
-	arr := messages.Array()
-	for i := len(arr) - 1; i >= 0; i-- {
-		if arr[i].Get("role").String() == "user" {
-			content := arr[i].Get("content").String()
-			if len(content) > 100 {
-				return content[:100]
-			}
-			return content
-		}
-	}
-	return ""
-}
-
-// RecordRequest 记录请求日志到 DuckDB
-func (s *RequestLogService) RecordRequest(traceID string, userID, apiKeyID uint,
-	userModel, providerModel, userApiType, providerApiType, passthroughLevel string, isStream bool,
-	promptTokens, completionTokens, totalTokens, cachedTokens int,
-	statusCode int, errMsg string, duration int64,
-	ipAddress, userAgent string,
-	reqBytes, respBytes []byte, chunks []*model.RequestChunk) {
-
-	if s.store == nil {
+// RecordRequest 保存请求日志到数据库
+func (s *RequestLogService) RecordRequest(log *model.RequestLog) {
+	if s.store == nil || log == nil {
 		return
 	}
 
-	logDetail := s.isDetailEnabled()
-	summary := extractSummary(reqBytes)
+	log.IsDetail = s.IsDetailEnabled()
+	log.CreatedAt = time.Now()
+	log.ErrorMessage = TruncateStr(log.ErrorMessage, 4096)
+	log.UserAgent = TruncateStr(log.UserAgent, 512)
 
-	// 插入请求日志
-	_, err := s.store.Exec(`INSERT INTO request_logs
-		(trace_id, user_id, api_key_id, user_model, provider_model, user_api_type, provider_api_type, passthrough_level,
-		 summary, is_stream, prompt_tokens, completion_tokens, total_tokens, cached_tokens,
-		 is_detail, status_code, error_message, duration,
-		 ip_address, user_agent, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		traceID, userID, apiKeyID, userModel, providerModel, userApiType, providerApiType, passthroughLevel,
-		summary, isStream, promptTokens, completionTokens, totalTokens, cachedTokens,
-		logDetail, statusCode, TruncateStr(errMsg, 4096), duration,
-		ipAddress, TruncateStr(userAgent, 512), time.Now(),
-	)
+	_, err := s.store.NamedExec(`INSERT INTO request_logs
+		(trace_id, user_id, api_key_id, user_model, provider_model, response_model, user_api_type, provider_api_type, passthrough_level,
+		 summary, is_stream, prompt_tokens, completion_tokens, reasoning_tokens, total_tokens, cached_tokens,
+		 is_detail, status_code, error_message, duration, ip_address, user_agent, created_at)
+		VALUES (:trace_id, :user_id, :api_key_id, :user_model, :provider_model, :response_model, :user_api_type, :provider_api_type, :passthrough_level,
+		 :summary, :is_stream, :prompt_tokens, :completion_tokens, :reasoning_tokens, :total_tokens, :cached_tokens,
+		 :is_detail, :status_code, :error_message, :duration, :ip_address, :user_agent, :created_at)`, log)
 	if err != nil {
 		slog.Error("failed to insert request log", "error", err)
 	}
+}
 
-	// 插入详细请求/响应
-	if logDetail {
-		_, err := s.store.Exec(`INSERT INTO request_details
-			(trace_id, request_body, response_body)
-			VALUES (?, ?, ?)`,
-			traceID,
-			TruncateStr(string(reqBytes), 65536),
-			TruncateStr(string(respBytes), 65536),
-		)
-		if err != nil {
-			slog.Error("failed to insert request detail", "error", err)
-		}
+// RecordDetail 记录请求详情
+func (s *RequestLogService) RecordDetail(traceID string, reqBytes, respBytes []byte) {
+	if s.store == nil {
+		return
+	}
+	_, err := s.store.Exec(`INSERT INTO request_details (trace_id, request, response) VALUES (?, ?, ?)`,
+		traceID, TruncateStr(string(reqBytes), 65536), TruncateStr(string(respBytes), 65536))
+	if err != nil {
+		slog.Error("failed to insert request detail", "error", err)
+	}
+}
+
+// RecordChunks 记录流式响应 chunks
+func (s *RequestLogService) RecordChunks(chunks []*model.RequestChunk) {
+	if s.store == nil || len(chunks) == 0 {
+		return
 	}
 
-	// 插入流式 chunks
-	if logDetail && len(chunks) > 0 {
-		for _, chunk := range chunks {
-			_, err := s.store.Exec(`INSERT INTO request_chunks
-				(chunk_id, trace_id, index, data, created_at)
-				VALUES (?, ?, ?, ?, ?)`,
-				chunk.ChunkID, chunk.TraceID, chunk.Index, chunk.Data, chunk.CreatedAt,
-			)
-			if err != nil {
-				slog.Error("failed to insert request chunk", "error", err)
-			}
+	for _, chunk := range chunks {
+		_, err := s.store.Exec(`INSERT INTO request_chunks (chunk_id, trace_id, index, data, created_at) VALUES (?, ?, ?, ?, ?)`,
+			chunk.ChunkID, chunk.TraceID, chunk.Index, chunk.Data, chunk.CreatedAt)
+		if err != nil {
+			slog.Error("failed to insert request chunk", "error", err)
 		}
 	}
 }
@@ -119,7 +84,7 @@ type StreamChunkCollector struct {
 func (s *RequestLogService) NewChunkCollector(traceID string) *StreamChunkCollector {
 	return &StreamChunkCollector{
 		traceID:   traceID,
-		logDetail: s.isDetailEnabled(),
+		logDetail: s.IsDetailEnabled(),
 	}
 }
 

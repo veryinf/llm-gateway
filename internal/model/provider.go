@@ -1,5 +1,22 @@
 package model
 
+// LLMAPIType LLM API 类型
+type LLMAPIType string
+
+const (
+	APITypeOpenAI    LLMAPIType = "openai"
+	APITypeAnthropic LLMAPIType = "anthropic"
+)
+
+// PassthroughLevel 透传级别
+type PassthroughLevel string
+
+const (
+	PassthroughLevelNone     PassthroughLevel = "none"
+	PassthroughLevelUser     PassthroughLevel = "user"
+	PassthroughLevelProvider PassthroughLevel = "provider"
+)
+
 type Provider struct {
 	ProviderID       uint   `json:"providerId" gorm:"primaryKey;autoIncrement"`
 	Title            string `json:"title"`
@@ -12,13 +29,6 @@ type Provider struct {
 	IsActive         bool   `json:"isActive"`
 	IsDefault        bool   `json:"isDefault"`
 }
-
-type APIType string
-
-const (
-	APITypeOpenAI    APIType = "openai"
-	APITypeAnthropic APIType = "anthropic"
-)
 
 type ProviderModel struct {
 	ModelID          uint    `json:"modelId" gorm:"primaryKey"`

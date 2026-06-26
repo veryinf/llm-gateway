@@ -83,10 +83,6 @@ func InitHttpServer(db *gorm.DB, store *sqlx.DB, cfg *core.Config) *echo.Echo {
 
 	base := common.BaseHandler{DB: db, Store: store, TokenManager: tokenManager, Config: cfg}
 
-	// 初始化 Gateway 服务
-	routerSvc := service.NewRouterService(db)
-	logSvc := service.NewRequestLogService(store)
-
 	// 公共接口
 	bizApi := e.Group(apiBizPrefix)
 	bizApi.Use(common.LeMiddleware(common.LeMiddlewareConfig{
@@ -111,10 +107,10 @@ func InitHttpServer(db *gorm.DB, store *sqlx.DB, cfg *core.Config) *echo.Echo {
 	(&handlers.HealthHandler{BaseHandler: base}).RegisterRoutes(bizApi)
 
 	// LLM Gateway API — uses ProxyMiddleware (sk- API Key)
-	gatewayBase := handlers.GatewayBase{
-		BaseHandler: base,
-		RouterSvc:   routerSvc,
-		LogSvc:      logSvc,
+	gatewayBase := common.GatewayBase{
+		BaseHandler:       base,
+		RouterService:     service.NewRouterService(db),
+		RequestLogService: service.NewRequestLogService(store),
 	}
 	v1 := e.Group("/v1")
 	v1.Use(common.ProxyMiddleware())

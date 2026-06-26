@@ -12,6 +12,7 @@ import (
 	"llm-gateway/internal/core"
 	"llm-gateway/internal/model"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/samber/lo"
 )
@@ -20,7 +21,10 @@ type LeContext struct {
 	echo.Context
 	AuthToken *TokenInfo
 	AuthUser  *model.User
+	//Proxy相关
 	UserKey   *model.UserKey
+	TraceID   string
+	StartTime time.Time
 }
 
 type LeMiddlewareConfig struct {
@@ -127,6 +131,8 @@ func ProxyMiddleware() echo.MiddlewareFunc {
 
 			cc.AuthUser = &user
 			cc.UserKey = &userKey
+			cc.StartTime = time.Now()
+			cc.TraceID = uuid.NewString()
 
 			return next(cc)
 		}

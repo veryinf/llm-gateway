@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 
 	"llm-gateway/internal/model"
 	"llm-gateway/internal/provider"
+	"llm-gateway/internal/service"
+	"llm-gateway/internal/web/common"
 
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
 type OpenAIGatewayHandler struct {
-	GatewayBase
+	common.GatewayBase
 }
 
 func (h *OpenAIGatewayHandler) RegisterRoutes(g *echo.Group) {
@@ -24,79 +24,62 @@ func (h *OpenAIGatewayHandler) RegisterRoutes(g *echo.Group) {
 }
 
 func (h *OpenAIGatewayHandler) HandleChatCompletion(c echo.Context) error {
-	// 解析 LLM 请求
-	llmReq, err := provider.ParseLLMRequest(c.Request(), provider.APITypeOpenAI)
+	llmReq, err := provider.NewLLMRequest(c.Request(), model.APITypeOpenAI)
 	if err != nil {
-		return h.errorJSON(c, http.StatusBadRequest, err.Error())
+		return h.ErrorJSON(c, http.StatusBadRequest, err.Error())
+	}
+	llmReq, err = llmReq.ToOpenAI()
+	if err != nil {
+		return h.ErrorJSON(c, http.StatusBadRequest, err.Error())
 	}
 
-	// 设置 traceID
-	traceID := c.Get("trace_id").(string)
-	if traceID == "" {
-		traceID = uuid.New().String()
-		c.Set("trace_id", traceID)
-	}
-
-	adapter, providerModel, passthroughLevel, err := h.resolveProvider(llmReq.Model)
+	router, err := h.RouterService.ResolveProvider(llmReq.Model)
 	if err != nil {
-		return h.errorJSON(c, http.StatusNotFound, "no provider available")
+		return h.ErrorJSON(c, http.StatusNotFound, "no provider available")
 	}
 
 	if llmReq.Stream {
-		return h.handleStream(c, adapter, llmReq, providerModel, passthroughLevel)
+		return h.handleStream(c, llmReq, router)
 	}
-	return h.handleNonStream(c, adapter, llmReq, providerModel, passthroughLevel)
+	return h.handleNonStream(c, llmReq, router)
 }
 
-func (h *OpenAIGatewayHandler) handleNonStream(c echo.Context, adapter *provider.Adapter,
-	llmReq *provider.LLMRequest, providerModel, passthroughLevel string) error {
+func (h *OpenAIGatewayHandler) handleNonStream(c echo.Context, llmReq *provider.LLMRequest, router *service.RouterResult) error {
+	ctx := h.Context(c)
 
-	startTime := time.Now()
-	traceID := c.Get("trace_id").(string)
-	uid, kid := extractUserInfo(c)
-
-	// 直接透传请求
-	resp, err := adapter.ChatCompletion(c.Request().Context(), llmReq)
-	duration := time.Since(startTime).Milliseconds()
-
+	resp, err := router.Adapter.AutoChat(c.Request().Context(), llmReq)
+	log := h.BuildLog(ctx, router, llmReq, resp)
 	if err != nil {
-		h.recordRequest(traceID, uid, kid,
-			llmReq.Model, providerModel, string(provider.APITypeOpenAI), adapter.Type(), passthroughLevel, false,
-			0, 0, 0, 0, http.StatusBadGateway, err.Error(), duration, c, llmReq.BodyRaw, nil, nil)
-		return h.errorJSON(c, http.StatusBadGateway, err.Error())
+		log.ErrorMessage = err.Error()
+		h.RequestLogService.RecordRequest(log)
+		return h.ErrorJSON(c, http.StatusBadGateway, err.Error())
 	}
 
-	// 读取响应用于日志
-	respBody, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	c.Response().Header().Set("Content-Type", "application/json")
+	c.Response().WriteHeader(http.StatusOK)
 
-	h.recordRequest(traceID, uid, kid,
-		llmReq.Model, providerModel, string(provider.APITypeOpenAI), adapter.Type(), passthroughLevel, false,
-		0, 0, 0, 0, // token 信息需要从响应中解析
-		http.StatusOK, "", duration, c, llmReq.BodyRaw, respBody, nil)
+	_, copyErr := io.Copy(c.Response().Writer, resp.Response.Body)
+	_ = resp.Response.Body.Close()
 
-	// 返回原始响应
-	return c.Blob(http.StatusOK, "application/json", respBody)
+	if copyErr != nil {
+		log.ErrorMessage = copyErr.Error()
+		h.RequestLogService.RecordRequest(log)
+		return h.ErrorJSON(c, http.StatusBadGateway, copyErr.Error())
+	}
+	h.RequestLogService.RecordRequest(log)
+	return nil
 }
 
-func (h *OpenAIGatewayHandler) handleStream(c echo.Context, adapter *provider.Adapter,
-	llmReq *provider.LLMRequest, providerModel, passthroughLevel string) error {
-
-	flusher, err := h.prepareStream(c)
+func (h *OpenAIGatewayHandler) handleStream(c echo.Context, llmReq *provider.LLMRequest, router *service.RouterResult) error {
+	flusher, err := h.PrepareStream(c)
 	if err != nil {
-		return h.errorJSON(c, http.StatusInternalServerError, err.Error())
+		return h.ErrorJSON(c, http.StatusInternalServerError, err.Error())
 	}
 
-	startTime := time.Now()
-	traceID := c.Get("trace_id").(string)
-	uid, kid := extractUserInfo(c)
-	collector := h.newChunkCollector(traceID)
+	ctx := h.Context(c)
+	collector := h.NewChunkCollector(ctx.TraceID)
 
-	// 直接透传流式请求
-	chunkCh, errCh := adapter.ChatCompletionStream(c.Request().Context(), llmReq)
-
-	var finalErr string
-	statusCode := http.StatusOK
+	chunkCh, errCh := router.Adapter.ChatCompletionStream(c.Request().Context(), llmReq)
 
 	for data := range chunkCh {
 		fmt.Fprintf(c.Response().Writer, "data: %s\n\n", data)
@@ -104,25 +87,17 @@ func (h *OpenAIGatewayHandler) handleStream(c echo.Context, adapter *provider.Ad
 		collector.Add(data)
 	}
 
-	select {
-	case err := <-errCh:
-		if err != nil {
-			finalErr = err.Error()
-			statusCode = http.StatusBadGateway
-			errData, _ := json.Marshal(map[string]string{"error": err.Error()})
-			fmt.Fprintf(c.Response().Writer, "data: %s\n\n", errData)
-			flusher.Flush()
-		}
-	default:
+	if err := <-errCh; err != nil {
+		errData, _ := json.Marshal(map[string]string{"error": err.Error()})
+		fmt.Fprintf(c.Response().Writer, "data: %s\n\n", errData)
+		flusher.Flush()
 	}
 
 	fmt.Fprint(c.Response().Writer, "data: [DONE]\n\n")
 	flusher.Flush()
 
-	h.recordRequest(traceID, uid, kid,
-		llmReq.Model, providerModel, string(provider.APITypeOpenAI), adapter.Type(), passthroughLevel, true,
-		0, 0, 0, 0, // token 信息需要从 chunk 中解析
-		statusCode, finalErr, time.Since(startTime).Milliseconds(), c, llmReq.BodyRaw, nil, collector.Chunks())
+	h.RecordRequest(ctx, router, llmReq, nil)
+	h.RecordChunks(collector.Chunks())
 	return nil
 }
 

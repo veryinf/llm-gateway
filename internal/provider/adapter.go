@@ -1,8 +1,6 @@
 package provider
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,39 +13,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"llm-gateway/internal/model"
-
-	"github.com/tidwall/gjson"
 )
-
-// ==================== 请求解析函数 ====================
-
-// ParseLLMRequest 从 *http.Request 解析 LLM 请求
-// apiType: APITypeOpenAI 或 APITypeAnthropic
-// 使用 TeeReader 复制 body，原始请求不被消耗
-func ParseLLMRequest(req *http.Request, apiType LLMAPIType) (*LLMRequest, error) {
-	// 使用 TeeReader 读取 body 并同时复制一份
-	var bodyBuf bytes.Buffer
-	bodyBytes, err := io.ReadAll(io.TeeReader(req.Body, &bodyBuf))
-	if err != nil {
-		return nil, fmt.Errorf("read request body: %w", err)
-	}
-	_ = req.Body.Close()
-
-	// 重建原始请求的 body（保留原始流不被消耗）
-	req.Body = io.NopCloser(&bodyBuf)
-	// 使用 gjson 解析必要字段
-	if !gjson.ValidBytes(bodyBytes) {
-		return nil, fmt.Errorf("invalid request body")
-	}
-	result := gjson.ParseBytes(bodyBytes)
-	return &LLMRequest{
-		Raw:     req,
-		APIType: apiType,
-		Model:   result.Get("model").String(),
-		Stream:  result.Get("stream").Bool(),
-		BodyRaw: bodyBytes,
-	}, nil
-}
 
 // ==================== Adapter ====================
 
@@ -130,25 +96,26 @@ func (a *Adapter) SupportAnthropic() bool {
 	return a.Provider.SupportAnthropic
 }
 
-// ID 返回 Provider 唯一标识
-func (a *Adapter) ID() string {
-	return a.Provider.Title
-}
-
-// Type 返回 Provider 类型（支持的协议）
-func (a *Adapter) Type() string {
-	if a.SupportOpenAI() && a.SupportAnthropic() {
-		return string(APITypeOpenAI) + "," + string(APITypeAnthropic)
+func (a *Adapter) AutoChat(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
+	if req.APIType == model.APITypeOpenAI {
+		if a.SupportOpenAI() {
+			return a.ChatCompletion(ctx, req)
+		}
+		resp, err := a.Message(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		return resp.ToOpenAI()
+	} else {
+		if a.SupportAnthropic() {
+			return a.Message(ctx, req)
+		}
+		resp, err := a.ChatCompletion(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		return resp.ToAnthropic()
 	}
-	if a.SupportOpenAI() {
-		return string(APITypeOpenAI)
-	}
-	return string(APITypeAnthropic)
-}
-
-// GetProviderID 返回 Provider ID
-func (a *Adapter) GetProviderID() uint {
-	return a.Provider.ProviderID
 }
 
 // ==================== OpenAI 接口 ====================
@@ -163,22 +130,19 @@ func (a *Adapter) ChatCompletion(ctx context.Context, req *LLMRequest) (*LLMResp
 		return nil, fmt.Errorf("rate limit wait cancelled: %w", err)
 	}
 
-	a.setOpenAIHeaders(req.Raw)
+	a.setOpenAIHeaders(req.Request)
 
-	resp, err := a.httpClient.Do(req.Raw)
+	resp, err := a.httpClient.Do(req.Request)
 	if err != nil {
 		return nil, fmt.Errorf("http request: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
-		return nil, a.handleHTTPError(resp, "openai")
+		return nil, handleHTTPError(resp, "openai")
 	}
 
-	return &LLMResponse{
-		StatusCode: resp.StatusCode,
-		Body:       resp.Body,
-	}, nil
+	return NewLLMResponse(resp, model.APITypeOpenAI)
 }
 
 // ChatCompletionStream OpenAI 流式对话（直接透传原始请求）
@@ -200,9 +164,9 @@ func (a *Adapter) ChatCompletionStream(ctx context.Context, req *LLMRequest) (<-
 			return
 		}
 
-		a.setOpenAIHeaders(req.Raw)
+		a.setOpenAIHeaders(req.Request)
 
-		resp, err := a.httpClient.Do(req.Raw)
+		resp, err := a.httpClient.Do(req.Request)
 		if err != nil {
 			errCh <- fmt.Errorf("http request: %w", err)
 			return
@@ -212,11 +176,11 @@ func (a *Adapter) ChatCompletionStream(ctx context.Context, req *LLMRequest) (<-
 		}(resp.Body)
 
 		if resp.StatusCode != http.StatusOK {
-			errCh <- a.handleHTTPError(resp, "openai")
+			errCh <- handleHTTPError(resp, "openai")
 			return
 		}
 
-		for event := range readSSE(ctx, resp.Body) {
+		for event := range ReadSSE(ctx, resp.Body) {
 			if event.Data == "[DONE]" {
 				break
 			}
@@ -247,7 +211,7 @@ func (a *Adapter) ListModels(ctx context.Context) ([]ModelInfo, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, a.handleHTTPError(resp, "openai")
+		return nil, handleHTTPError(resp, "openai")
 	}
 
 	var result struct {
@@ -272,22 +236,19 @@ func (a *Adapter) Message(ctx context.Context, req *LLMRequest) (*LLMResponse, e
 		return nil, fmt.Errorf("rate limit wait cancelled: %w", err)
 	}
 
-	a.setAnthropicHeaders(req.Raw)
+	a.setAnthropicHeaders(req.Request)
 
-	resp, err := a.httpClient.Do(req.Raw)
+	resp, err := a.httpClient.Do(req.Request)
 	if err != nil {
 		return nil, fmt.Errorf("http request: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, a.handleHTTPError(resp, "anthropic")
+		return nil, handleHTTPError(resp, "anthropic")
 	}
 
-	return &LLMResponse{
-		StatusCode: resp.StatusCode,
-		Body:       resp.Body,
-	}, nil
+	return NewLLMResponse(resp, model.APITypeAnthropic)
 }
 
 // MessageStream Anthropic 流式对话（直接透传原始请求）
@@ -309,9 +270,9 @@ func (a *Adapter) MessageStream(ctx context.Context, req *LLMRequest) (<-chan []
 			return
 		}
 
-		a.setAnthropicHeaders(req.Raw)
+		a.setAnthropicHeaders(req.Request)
 
-		resp, err := a.httpClient.Do(req.Raw)
+		resp, err := a.httpClient.Do(req.Request)
 		if err != nil {
 			errCh <- fmt.Errorf("http request: %w", err)
 			return
@@ -319,11 +280,11 @@ func (a *Adapter) MessageStream(ctx context.Context, req *LLMRequest) (<-chan []
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			errCh <- a.handleHTTPError(resp, "anthropic")
+			errCh <- handleHTTPError(resp, "anthropic")
 			return
 		}
 
-		for event := range readSSE(ctx, resp.Body) {
+		for event := range ReadSSE(ctx, resp.Body) {
 			chunkCh <- []byte(event.Data)
 		}
 	}()
@@ -342,63 +303,4 @@ func (a *Adapter) setAnthropicHeaders(req *http.Request) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", a.Provider.APIKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
-}
-
-func (a *Adapter) handleHTTPError(resp *http.Response, apiType string) error {
-	body, _ := io.ReadAll(resp.Body)
-	return fmt.Errorf("%s API error (status %d): %s", apiType, resp.StatusCode, string(body))
-}
-
-// ==================== SSE 解析 ====================
-
-type sseEvent struct {
-	Event string
-	Data  string
-}
-
-func readSSE(ctx context.Context, body io.Reader) <-chan sseEvent {
-	ch := make(chan sseEvent, 100)
-
-	go func() {
-		defer close(ch)
-
-		scanner := bufio.NewScanner(body)
-		scanner.Buffer(make([]byte, 64*1024), 1024*1024)
-
-		var event sseEvent
-		for scanner.Scan() {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-
-			line := scanner.Text()
-
-			if line == "" {
-				if event.Data != "" {
-					ch <- event
-					event = sseEvent{}
-				}
-				continue
-			}
-
-			if strings.HasPrefix(line, "event:") {
-				event.Event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
-			} else if strings.HasPrefix(line, "data:") {
-				data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-				if event.Data == "" {
-					event.Data = data
-				} else {
-					event.Data += "\n" + data
-				}
-			}
-		}
-
-		if event.Data != "" {
-			ch <- event
-		}
-	}()
-
-	return ch
 }

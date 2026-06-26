@@ -9,18 +9,10 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// Converter 格式转换器
-type Converter struct{}
-
-// NewConverter 创建转换器
-func NewConverter() *Converter {
-	return &Converter{}
-}
-
 // ==================== 请求转换 ====================
 
 // RequestOpenAIToAnthropic 将 OpenAI 请求转为 Anthropic 请求
-func (c *Converter) RequestOpenAIToAnthropic(req *http.Request) (*http.Request, error) {
+func RequestOpenAIToAnthropic(req *http.Request) (*http.Request, error) {
 	bodyBytes, err := io.ReadAll(req.Body)
 	if err != nil {
 		return nil, err
@@ -73,7 +65,7 @@ func (c *Converter) RequestOpenAIToAnthropic(req *http.Request) (*http.Request, 
 }
 
 // RequestAnthropicToOpenAI 将 Anthropic 请求转为 OpenAI 请求
-func (c *Converter) RequestAnthropicToOpenAI(req *http.Request) (*http.Request, error) {
+func RequestAnthropicToOpenAI(req *http.Request) (*http.Request, error) {
 	bodyBytes, err := io.ReadAll(req.Body)
 	if err != nil {
 		return nil, err
@@ -124,7 +116,7 @@ func (c *Converter) RequestAnthropicToOpenAI(req *http.Request) (*http.Request, 
 // ==================== 响应转换 ====================
 
 // ResponseOpenAIToAnthropic 将 OpenAI 响应转为 Anthropic 响应
-func (c *Converter) ResponseOpenAIToAnthropic(body io.ReadCloser) (io.ReadCloser, error) {
+func ResponseOpenAIToAnthropic(body io.ReadCloser) (io.ReadCloser, error) {
 	bodyBytes, err := io.ReadAll(body)
 	if err != nil {
 		return nil, err
@@ -156,7 +148,7 @@ func (c *Converter) ResponseOpenAIToAnthropic(body io.ReadCloser) (io.ReadCloser
 }
 
 // ResponseAnthropicToOpenAI 将 Anthropic 响应转为 OpenAI 响应
-func (c *Converter) ResponseAnthropicToOpenAI(body io.ReadCloser) (io.ReadCloser, error) {
+func ResponseAnthropicToOpenAI(body io.ReadCloser) (io.ReadCloser, error) {
 	bodyBytes, err := io.ReadAll(body)
 	if err != nil {
 		return nil, err

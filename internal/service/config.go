@@ -56,7 +56,7 @@ func SetConfig(key string, value any) error {
 }
 
 // SetConfigRaw 直接存储原始字符串值，不做 json.Marshal
-func SetConfigRaw(key string, value string) error {
+func SetConfigRaw(key string, value string, description string) error {
 	var config model.Config
 	result := core.DB.Where("`key` = ?", key).First(&config)
 	if result.Error != nil {
@@ -66,7 +66,13 @@ func SetConfigRaw(key string, value string) error {
 		}
 		result = core.DB.Create(&config)
 	} else {
-		result = core.DB.Model(&config).Update("value", value)
+		updates := map[string]any{
+			"value": value,
+		}
+		if description != "" {
+			updates["description"] = description
+		}
+		result = core.DB.Model(&config).Updates(updates)
 	}
 	if result.Error != nil {
 		slog.Error("failed to set config", "key", key, "error", result.Error)
@@ -82,27 +88,7 @@ func SetConfigWithDesc(key string, value any, description string) error {
 		return err
 	}
 
-	var config model.Config
-	result := core.DB.Where("`key` = ?", key).First(&config)
-	if result.Error != nil {
-		config = model.Config{
-			Key:         key,
-			Value:       string(jsonBytes),
-			Description: description,
-		}
-		result = core.DB.Create(&config)
-	} else {
-		updates := map[string]interface{}{
-			"value":       string(jsonBytes),
-			"description": description,
-		}
-		result = core.DB.Model(&config).Updates(updates)
-	}
-	if result.Error != nil {
-		slog.Error("failed to set config", "key", key, "error", result.Error)
-		return result.Error
-	}
-	return nil
+	return SetConfigRaw(key, string(jsonBytes), description)
 }
 
 func DeleteConfig(key string) error {

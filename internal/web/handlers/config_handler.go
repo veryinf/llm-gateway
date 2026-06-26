@@ -26,10 +26,7 @@ func (h *ConfigHandler) GetConfig(c echo.Context) error {
 
 	result := make(map[string]any, len(input.Keys))
 	for _, key := range input.Keys {
-		config := service.GetConfigRaw(key)
-		if config != nil {
-			result[key] = config.Value
-		}
+		result[key] = service.GetConfigString(key)
 	}
 	return common.NewData(result)
 }
@@ -48,7 +45,7 @@ func (h *ConfigHandler) SaveConfig(c echo.Context) error {
 	}
 
 	for key, value := range input.Configs {
-		if err := service.SetConfigRaw(key, value); err != nil {
+		if err := service.SetConfig(key, value); err != nil {
 			return h.Error(-1, err.Error())
 		}
 	}

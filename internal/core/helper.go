@@ -108,3 +108,11 @@ func FileSize(size int64) string {
 		return fmt.Sprintf("%.2f TB", float64(size)/unitTB)
 	}
 }
+
+// TruncateStr 截断字符串到指定最大长度
+func TruncateStr(s string, maxLen int) string {
+	if len(s) > maxLen {
+		return s[:maxLen]
+	}
+	return s
+}

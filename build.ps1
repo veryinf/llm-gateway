@@ -10,12 +10,14 @@ $WebDir = "web"
 # Parse $args manually (PowerShell doesn't support -- prefix in param)
 $Command = "help"
 $LogBoth = $false
+$DebugMode = $false
 $help = $false
 
 $i = 0
 while ($i -lt $args.Count) {
     switch ($args[$i]) {
         '--logfile' { $LogBoth = $true }
+        '--debug' { $DebugMode = $true }
         '--help' { $help = $true }
         default {
             if ($Command -eq "help") { $Command = $args[$i] }
@@ -80,14 +82,27 @@ switch ($Command) {
 
     "dev" {
         $BinaryName = "lgw-dev.exe"
-        Write-Step "Building and starting server in dev mode..."
         New-Item -ItemType Directory -Force -Path $DataDir, $BuildDir | Out-Null
-        Run "go build -ldflags=""$LdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/"
-        if ($LASTEXITCODE -ne 0) { Write-Err "Build failed"; exit $LASTEXITCODE }
-        Write-OK "Build done, starting..."
-        $startArgs = @()
-        if ($LogBoth) { $startArgs += "--log", "both" }
-        & "$BuildDir/$BinaryName" @startArgs
+
+        if ($DebugMode) {
+            # Debug mode: keep symbols, run with Delve
+            $DbgFlags = "-X 'llm-gateway/internal/core.BuildEnv=development' -X 'llm-gateway/internal/core.BuildTime=$BuildTime' -X 'llm-gateway/internal/core.BuildVersion=$BuildVersion'"
+            Write-Step "Building (debug) and starting with Delve..."
+            Run "go build -ldflags=""$DbgFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/"
+            if ($LASTEXITCODE -ne 0) { Write-Err "Build failed"; exit $LASTEXITCODE }
+            Write-OK "Build done, starting dlv..."
+            $startArgs = @("exec", "$BuildDir/$BinaryName", "--headless", "--listen=:2345", "--api-version=2", "--accept-multiclient", "--")
+            if ($LogBoth) { $startArgs += "--log", "both" }
+            & dlv @startArgs
+        } else {
+            Write-Step "Building and starting server in dev mode..."
+            Run "go build -ldflags=""$LdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/"
+            if ($LASTEXITCODE -ne 0) { Write-Err "Build failed"; exit $LASTEXITCODE }
+            Write-OK "Build done, starting..."
+            $startArgs = @()
+            if ($LogBoth) { $startArgs += "--log", "both" }
+            & "$BuildDir/$BinaryName" @startArgs
+        }
     }
 
     "build-all" {
@@ -132,11 +147,13 @@ switch ($Command) {
         Write-Host ""
         Write-Host "Options:" -ForegroundColor Yellow
         Write-Host "  --logfile        Pass --log both to the binary (output to console + file)"
+        Write-Host "  --debug          Start with Delve debugger on :2345 (for IDE attach)"
         Write-Host "  --help           Show this help"
         Write-Host ""
         Write-Host "Examples:" -ForegroundColor Yellow
         Write-Host "  .\build.ps1 dev                         # Start backend"
         Write-Host "  .\build.ps1 dev --logfile               # Dev with console + file logging"
+        Write-Host "  .\build.ps1 dev --debug                 # Dev with Delve debugger (IDE attach on :2345)"
         Write-Host ""
     }
 }

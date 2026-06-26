@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -120,7 +121,7 @@ func (a *Adapter) AutoChat(ctx context.Context, req *LLMRequest) (*LLMResponse, 
 
 // ==================== OpenAI 接口 ====================
 
-// ChatCompletion OpenAI 非流式对话（直接透传原始请求）
+// ChatCompletion OpenAI 非流式对话
 func (a *Adapter) ChatCompletion(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
 	if !a.SupportOpenAI() {
 		return nil, fmt.Errorf("provider %q does not support OpenAI API", a.Provider.Title)
@@ -130,9 +131,12 @@ func (a *Adapter) ChatCompletion(ctx context.Context, req *LLMRequest) (*LLMResp
 		return nil, fmt.Errorf("rate limit wait cancelled: %w", err)
 	}
 
-	a.setOpenAIHeaders(req.Request)
+	httpReq, err := a.newOpenAIRequest(ctx, "/chat/completions", req.Request.Body)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
 
-	resp, err := a.httpClient.Do(req.Request)
+	resp, err := a.httpClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("http request: %w", err)
 	}
@@ -145,9 +149,9 @@ func (a *Adapter) ChatCompletion(ctx context.Context, req *LLMRequest) (*LLMResp
 	return NewLLMResponse(resp, model.APITypeOpenAI)
 }
 
-// ChatCompletionStream OpenAI 流式对话（直接透传原始请求）
-func (a *Adapter) ChatCompletionStream(ctx context.Context, req *LLMRequest) (<-chan []byte, <-chan error) {
-	chunkCh := make(chan []byte, 100)
+// ChatCompletionStream OpenAI 流式对话
+func (a *Adapter) ChatCompletionStream(ctx context.Context, req *LLMRequest) (<-chan *LLMResponseChunk, <-chan error) {
+	chunkCh := make(chan *LLMResponseChunk, 100)
 	errCh := make(chan error, 1)
 
 	go func() {
@@ -164,9 +168,13 @@ func (a *Adapter) ChatCompletionStream(ctx context.Context, req *LLMRequest) (<-
 			return
 		}
 
-		a.setOpenAIHeaders(req.Request)
+		httpReq, err := a.newOpenAIRequest(ctx, "/chat/completions", req.Request.Body)
+		if err != nil {
+			errCh <- fmt.Errorf("create request: %w", err)
+			return
+		}
 
-		resp, err := a.httpClient.Do(req.Request)
+		resp, err := a.httpClient.Do(httpReq)
 		if err != nil {
 			errCh <- fmt.Errorf("http request: %w", err)
 			return
@@ -184,7 +192,7 @@ func (a *Adapter) ChatCompletionStream(ctx context.Context, req *LLMRequest) (<-
 			if event.Data == "[DONE]" {
 				break
 			}
-			chunkCh <- []byte(event.Data)
+			chunkCh <- NewLLMResponseChunk([]byte(event.Data), model.APITypeOpenAI)
 		}
 	}()
 
@@ -197,18 +205,18 @@ func (a *Adapter) ListModels(ctx context.Context) ([]ModelInfo, error) {
 		return nil, fmt.Errorf("provider %q does not support OpenAI API", a.Provider.Title)
 	}
 
-	url := a.openaiURL + "/models"
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	httpReq, err := a.newOpenAIRequest(ctx, "/models", nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
-	a.setOpenAIHeaders(httpReq)
 
 	resp, err := a.httpClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("http request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		_ = Body.Close()
+	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, handleHTTPError(resp, "openai")
@@ -226,7 +234,7 @@ func (a *Adapter) ListModels(ctx context.Context) ([]ModelInfo, error) {
 
 // ==================== Anthropic 接口 ====================
 
-// Message Anthropic 非流式对话（直接透传原始请求）
+// Message Anthropic 非流式对话
 func (a *Adapter) Message(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
 	if !a.SupportAnthropic() {
 		return nil, fmt.Errorf("provider %q does not support Anthropic API", a.Provider.Title)
@@ -236,24 +244,27 @@ func (a *Adapter) Message(ctx context.Context, req *LLMRequest) (*LLMResponse, e
 		return nil, fmt.Errorf("rate limit wait cancelled: %w", err)
 	}
 
-	a.setAnthropicHeaders(req.Request)
+	httpReq, err := a.newAnthropicRequest(ctx, "/messages", req.Request.Body)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
 
-	resp, err := a.httpClient.Do(req.Request)
+	resp, err := a.httpClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("http request: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, handleHTTPError(resp, "anthropic")
 	}
 
 	return NewLLMResponse(resp, model.APITypeAnthropic)
 }
 
-// MessageStream Anthropic 流式对话（直接透传原始请求）
-func (a *Adapter) MessageStream(ctx context.Context, req *LLMRequest) (<-chan []byte, <-chan error) {
-	chunkCh := make(chan []byte, 100)
+// MessageStream Anthropic 流式对话
+func (a *Adapter) MessageStream(ctx context.Context, req *LLMRequest) (<-chan *LLMResponseChunk, <-chan error) {
+	chunkCh := make(chan *LLMResponseChunk, 100)
 	errCh := make(chan error, 1)
 
 	go func() {
@@ -270,14 +281,20 @@ func (a *Adapter) MessageStream(ctx context.Context, req *LLMRequest) (<-chan []
 			return
 		}
 
-		a.setAnthropicHeaders(req.Request)
+		httpReq, err := a.newAnthropicRequest(ctx, "/messages", req.Request.Body)
+		if err != nil {
+			errCh <- fmt.Errorf("create request: %w", err)
+			return
+		}
 
-		resp, err := a.httpClient.Do(req.Request)
+		resp, err := a.httpClient.Do(httpReq)
 		if err != nil {
 			errCh <- fmt.Errorf("http request: %w", err)
 			return
 		}
-		defer resp.Body.Close()
+		defer func(Body io.ReadCloser) {
+			_ = Body.Close()
+		}(resp.Body)
 
 		if resp.StatusCode != http.StatusOK {
 			errCh <- handleHTTPError(resp, "anthropic")
@@ -285,7 +302,7 @@ func (a *Adapter) MessageStream(ctx context.Context, req *LLMRequest) (<-chan []
 		}
 
 		for event := range ReadSSE(ctx, resp.Body) {
-			chunkCh <- []byte(event.Data)
+			chunkCh <- NewLLMResponseChunk([]byte(event.Data), model.APITypeAnthropic)
 		}
 	}()
 
@@ -294,13 +311,33 @@ func (a *Adapter) MessageStream(ctx context.Context, req *LLMRequest) (<-chan []
 
 // ==================== 内部辅助方法 ====================
 
-func (a *Adapter) setOpenAIHeaders(req *http.Request) {
+// newOpenAIRequest 创建 OpenAI 请求（新请求，复用原始 body）
+func (a *Adapter) newOpenAIRequest(ctx context.Context, endpoint string, body io.Reader) (*http.Request, error) {
+	fullURL, err := url.JoinPath(a.openaiURL, endpoint)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, body)
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+a.Provider.APIKey)
+	return req, nil
 }
 
-func (a *Adapter) setAnthropicHeaders(req *http.Request) {
+// newAnthropicRequest 创建 Anthropic 请求（新请求，复用原始 body）
+func (a *Adapter) newAnthropicRequest(ctx context.Context, endpoint string, body io.Reader) (*http.Request, error) {
+	fullURL, err := url.JoinPath(a.anthropicURL, endpoint)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, body)
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", a.Provider.APIKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
+	return req, nil
 }

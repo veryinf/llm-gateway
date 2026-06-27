@@ -10,18 +10,10 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-type ChunkType string
-
-const (
-	ChunkTypeMessage ChunkType = "message" // 普通消息（数据块）
-	ChunkTypeUsage   ChunkType = "usage"   // 结束时的用量消息
-	ChunkTypeDone    ChunkType = "done"    // 结束事件
-)
-
 // LLMResponseChunk LLM 流式响应块
 type LLMResponseChunk struct {
 	APIType   model.LLMAPIType // API 类型：openai / anthropic
-	Type      ChunkType
+	Type      model.ChunkType
 	Raw       []byte        //转换过的Data
 	RawData   []byte        //原始的Data
 	RawObject *gjson.Result //原始DataObject
@@ -37,26 +29,102 @@ type ModelInfo struct {
 
 // NewLLMResponseChunk 从原始字节构造 LLMResponseChunk
 func NewLLMResponseChunk(raw []byte, apiType model.LLMAPIType) *LLMResponseChunk {
-	chunk := &LLMResponseChunk{Raw: raw, RawData: raw, APIType: apiType, Type: ChunkTypeMessage}
+	chunk := &LLMResponseChunk{Raw: raw, RawData: raw, APIType: apiType, Type: model.ChunkTypeOther}
 
-	// 检查结束事件
+	// 检查 OpenAI 结束事件
 	if apiType == model.APITypeOpenAI && string(raw) == "[DONE]" {
-		chunk.Type = ChunkTypeDone
+		chunk.Type = model.ChunkTypeDone
 		return chunk
 	}
 
-	if gjson.ValidBytes(raw) {
-		result := gjson.ParseBytes(raw)
-		chunk.RawObject = &result
+	if !gjson.ValidBytes(raw) {
+		return chunk
+	}
 
-		// 检查 Anthropic 的 message_stop 事件
-		if apiType == model.APITypeAnthropic && result.Get("type").String() == "message_stop" {
-			chunk.Type = ChunkTypeDone
-		} else if result.Get("usage").Exists() {
-			chunk.Type = ChunkTypeUsage
+	result := gjson.ParseBytes(raw)
+	chunk.RawObject = &result
+
+	// 根据 API 类型解析 chunk 类型
+	if apiType == model.APITypeAnthropic {
+		chunk.Type = parseAnthropicChunkType(result)
+	} else {
+		chunk.Type = parseOpenAIChunkType(result)
+	}
+
+	return chunk
+}
+
+// parseAnthropicChunkType 解析 Anthropic 格式的 chunk 类型
+func parseAnthropicChunkType(result gjson.Result) model.ChunkType {
+	eventType := result.Get("type").String()
+
+	switch eventType {
+	case "message_stop":
+		return model.ChunkTypeDone
+	case "message_delta":
+		// message_delta 包含 usage 和 stop_reason
+		if result.Get("usage").Exists() {
+			return model.ChunkTypeUsage
+		}
+	case "content_block_delta":
+		// content_block_delta 包含实际内容
+		delta := result.Get("delta")
+		if delta.Get("thinking").Exists() {
+			return model.ChunkTypeReasoning
+		}
+		if delta.Get("text").Exists() {
+			return model.ChunkTypeMessage
+		}
+	case "content_block_start":
+		// 内容块开始，检查是否是 thinking 类型
+		if result.Get("content_block.type").String() == "thinking" {
+			return model.ChunkTypeReasoning
+		}
+	case "content_block_stop":
+		// 内容块结束，无实际数据
+		return model.ChunkTypeOther
+	case "message_start":
+		// 消息开始，包含 usage
+		if result.Get("message.usage").Exists() {
+			return model.ChunkTypeUsage
 		}
 	}
-	return chunk
+
+	return model.ChunkTypeOther
+}
+
+// parseOpenAIChunkType 解析 OpenAI 格式的 chunk 类型
+func parseOpenAIChunkType(result gjson.Result) model.ChunkType {
+	choices := result.Get("choices")
+	if !choices.Exists() || !choices.IsArray() || len(choices.Array()) == 0 {
+		// 没有 choices，可能是 usage chunk
+		if result.Get("usage").Exists() {
+			return model.ChunkTypeUsage
+		}
+		return model.ChunkTypeOther
+	}
+
+	delta := choices.Array()[0].Get("delta")
+	if !delta.Exists() {
+		return model.ChunkTypeOther
+	}
+
+	// 检查推理内容
+	if reasoning := delta.Get("reasoning_content"); reasoning.Exists() && reasoning.Type != gjson.Null {
+		return model.ChunkTypeReasoning
+	}
+
+	// 检查普通内容
+	if content := delta.Get("content"); content.Exists() && content.Type != gjson.Null {
+		return model.ChunkTypeMessage
+	}
+
+	// 检查 role（通常是第一个 chunk）
+	if delta.Get("role").Exists() {
+		return model.ChunkTypeOther
+	}
+
+	return model.ChunkTypeOther
 }
 
 // ToOpenAI 将 chunk 转换为 OpenAI 格式
@@ -70,7 +138,7 @@ func (c *LLMResponseChunk) ToOpenAI() (*LLMResponseChunk, error) {
 
 	var newJSON map[string]interface{}
 	switch c.Type {
-	case ChunkTypeMessage:
+	case model.ChunkTypeMessage:
 		text := c.RawObject.Get("delta.text").String()
 		newJSON = map[string]interface{}{
 			"choices": []map[string]interface{}{
@@ -81,18 +149,40 @@ func (c *LLMResponseChunk) ToOpenAI() (*LLMResponseChunk, error) {
 				},
 			},
 		}
-	case ChunkTypeUsage:
+	case model.ChunkTypeReasoning:
+		thinking := c.RawObject.Get("thinking").String()
+		if thinking == "" {
+			thinking = c.RawObject.Get("delta.thinking").String()
+		}
+		newJSON = map[string]interface{}{
+			"choices": []map[string]interface{}{
+				{
+					"delta": map[string]interface{}{
+						"reasoning_content": thinking,
+					},
+				},
+			},
+		}
+	case model.ChunkTypeUsage:
 		usage := c.RawObject.Get("usage").Value()
 		newJSON = map[string]interface{}{
 			"usage": usage,
 		}
-	case ChunkTypeDone:
-		// OpenAI 的结束符是 "[DONE]"，直接返回特殊标记
+	case model.ChunkTypeDone:
 		return &LLMResponseChunk{
 			APIType: model.APITypeOpenAI,
-			Type:    ChunkTypeDone,
+			Type:    model.ChunkTypeDone,
 			Raw:     []byte("[DONE]"),
 			RawData: c.RawData,
+		}, nil
+	case model.ChunkTypeOther:
+		// 其他类型，尝试保持原样或跳过
+		return &LLMResponseChunk{
+			APIType:   model.APITypeOpenAI,
+			Type:      model.ChunkTypeOther,
+			Raw:       c.Raw,
+			RawData:   c.RawData,
+			RawObject: c.RawObject,
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported chunk type: %s", c.Type)
@@ -123,7 +213,7 @@ func (c *LLMResponseChunk) ToAnthropic() (*LLMResponseChunk, error) {
 
 	var newJSON map[string]interface{}
 	switch c.Type {
-	case ChunkTypeMessage:
+	case model.ChunkTypeMessage:
 		text := c.RawObject.Get("choices.0.delta.content").String()
 		newJSON = map[string]interface{}{
 			"type": "content_block_delta",
@@ -132,7 +222,16 @@ func (c *LLMResponseChunk) ToAnthropic() (*LLMResponseChunk, error) {
 				"text": text,
 			},
 		}
-	case ChunkTypeUsage:
+	case model.ChunkTypeReasoning:
+		thinking := c.RawObject.Get("choices.0.delta.reasoning_content").String()
+		newJSON = map[string]interface{}{
+			"type": "content_block_delta",
+			"delta": map[string]interface{}{
+				"type":     "thinking",
+				"thinking": thinking,
+			},
+		}
+	case model.ChunkTypeUsage:
 		usage := c.RawObject.Get("usage").Value()
 		newJSON = map[string]interface{}{
 			"type": "message_delta",
@@ -141,10 +240,19 @@ func (c *LLMResponseChunk) ToAnthropic() (*LLMResponseChunk, error) {
 			},
 			"usage": usage,
 		}
-	case ChunkTypeDone:
+	case model.ChunkTypeDone:
 		newJSON = map[string]interface{}{
 			"type": "message_stop",
 		}
+	case model.ChunkTypeOther:
+		// 其他类型，尝试保持原样或跳过
+		return &LLMResponseChunk{
+			APIType:   model.APITypeAnthropic,
+			Type:      model.ChunkTypeOther,
+			Raw:       c.Raw,
+			RawData:   c.RawData,
+			RawObject: c.RawObject,
+		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported chunk type: %s", c.Type)
 	}
@@ -180,14 +288,15 @@ func NewChunkCollector(traceID string, logDetail bool) *ChunkCollector {
 }
 
 // Add 添加一个 chunk
-func (sc *ChunkCollector) Add(data []byte) {
+func (sc *ChunkCollector) Add(chunk *LLMResponseChunk) {
 	if !sc.logDetail {
 		return
 	}
 	sc.chunks = append(sc.chunks, &model.RequestChunk{
 		TraceID:   sc.traceID,
 		Index:     sc.index,
-		Data:      string(data),
+		Type:      chunk.Type,
+		Data:      string(chunk.RawData),
 		CreatedAt: time.Now(),
 	})
 	sc.index++

@@ -25,7 +25,7 @@ func (h *HealthHandler) Readiness(c echo.Context) error {
 		return c.JSON(http.StatusServiceUnavailable, map[string]any{"status": "not ready"})
 	}
 	// 检查 DuckDB
-	if err := h.Store.Ping(); err != nil {
+	if err := h.Store.DB().Ping(); err != nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]any{"status": "not ready"})
 	}
 	return c.JSON(http.StatusOK, map[string]any{"status": "ready"})

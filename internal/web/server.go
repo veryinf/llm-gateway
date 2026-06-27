@@ -7,6 +7,7 @@ import (
 
 	llmgateway "llm-gateway"
 	"llm-gateway/internal/core"
+	"llm-gateway/internal/database"
 	"llm-gateway/internal/service"
 	"llm-gateway/internal/web/common"
 	"llm-gateway/internal/web/handlers"
@@ -15,7 +16,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"gorm.io/gorm"
@@ -27,7 +27,7 @@ var (
 	staticSkipPrefixes = []string{"/api/", "/v1/", "/anthropic/"}
 )
 
-func InitHttpServer(db *gorm.DB, store *sqlx.DB, cfg *core.Config) *echo.Echo {
+func InitHttpServer(db *gorm.DB, store *database.Store, cfg *core.Config) (*echo.Echo, *database.Store) {
 	tokenManager := common.NewTokenManager()
 
 	e := echo.New()
@@ -108,9 +108,8 @@ func InitHttpServer(db *gorm.DB, store *sqlx.DB, cfg *core.Config) *echo.Echo {
 
 	// LLM Gateway API — uses ProxyMiddleware (sk- API Key)
 	gatewayBase := common.GatewayBase{
-		BaseHandler:       base,
-		RouterService:     service.NewRouterService(db),
-		RequestLogService: service.NewRequestLogService(store),
+		BaseHandler:   base,
+		RouterService: service.NewRouterService(db),
 	}
 	v1 := e.Group("/v1")
 	v1.Use(common.ProxyMiddleware())
@@ -118,5 +117,5 @@ func InitHttpServer(db *gorm.DB, store *sqlx.DB, cfg *core.Config) *echo.Echo {
 	anthropic := e.Group("/anthropic/v1")
 	anthropic.Use(common.ProxyMiddleware())
 	(&handlers.AnthropicGatewayHandler{GatewayBase: gatewayBase}).RegisterRoutes(anthropic)
-	return e
+	return e, store
 }

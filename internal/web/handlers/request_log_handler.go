@@ -80,7 +80,7 @@ func (h *RequestLogHandler) SearchRequestLogs(c echo.Context) error {
 
 	var total int64
 	countSQL := "SELECT COUNT(*) FROM request_logs " + whereClause
-	if err := h.Store.Get(&total, countSQL, args...); err != nil {
+	if err := h.Store.DB().Get(&total, countSQL, args...); err != nil {
 		return h.Error(-20, err.Error())
 	}
 
@@ -88,7 +88,7 @@ func (h *RequestLogHandler) SearchRequestLogs(c echo.Context) error {
 	queryArgs := append(args, input.Pagination.Size, input.Pagination.Offset)
 
 	var logs []model.RequestLog
-	if err := h.Store.Select(&logs, querySQL, queryArgs...); err != nil {
+	if err := h.Store.DB().Select(&logs, querySQL, queryArgs...); err != nil {
 		return h.Error(-20, err.Error())
 	}
 
@@ -111,7 +111,7 @@ func (h *RequestLogHandler) FetchRequestLog(c echo.Context) error {
 	}
 
 	var log model.RequestLog
-	if err := h.Store.Get(&log, "SELECT * FROM request_logs WHERE trace_id = ?", input.TraceID); err != nil {
+	if err := h.Store.DB().Get(&log, "SELECT * FROM request_logs WHERE trace_id = ?", input.TraceID); err != nil {
 		return h.Error(-24, "request log not found")
 	}
 
@@ -130,7 +130,7 @@ func (h *RequestLogHandler) FetchRequestDetail(c echo.Context) error {
 	}
 
 	var detail model.RequestDetail
-	if err := h.Store.Get(&detail, "SELECT * FROM request_details WHERE trace_id = ?", input.TraceID); err != nil {
+	if err := h.Store.DB().Get(&detail, "SELECT * FROM request_details WHERE trace_id = ?", input.TraceID); err != nil {
 		return h.Error(-24, "request detail not found")
 	}
 
@@ -149,7 +149,7 @@ func (h *RequestLogHandler) FetchRequestChunks(c echo.Context) error {
 	}
 
 	var chunks []model.RequestChunk
-	if err := h.Store.Select(&chunks, "SELECT * FROM request_chunks WHERE trace_id = ? ORDER BY index ASC", input.TraceID); err != nil {
+	if err := h.Store.DB().Select(&chunks, "SELECT * FROM request_chunks WHERE trace_id = ? ORDER BY index ASC", input.TraceID); err != nil {
 		return h.Error(-20, err.Error())
 	}
 

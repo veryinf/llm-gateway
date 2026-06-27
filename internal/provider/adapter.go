@@ -97,26 +97,33 @@ func (a *Adapter) SupportAnthropic() bool {
 	return a.Provider.SupportAnthropic
 }
 
-func (a *Adapter) AutoChat(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
-	if req.APIType == model.APITypeOpenAI {
+func (a *Adapter) ProviderAPIType(inputType model.LLMAPIType) model.LLMAPIType {
+	if inputType == model.APITypeOpenAI {
 		if a.SupportOpenAI() {
-			return a.ChatCompletion(ctx, req)
+			return model.APITypeOpenAI
 		}
-		resp, err := a.Message(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-		return resp.ToOpenAI()
+		return model.APITypeAnthropic
 	} else {
 		if a.SupportAnthropic() {
-			return a.Message(ctx, req)
+			return model.APITypeAnthropic
 		}
-		resp, err := a.ChatCompletion(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-		return resp.ToAnthropic()
+		return model.APITypeOpenAI
 	}
+}
+
+func (a *Adapter) AutoChat(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
+	if a.ProviderAPIType(req.APIType) == model.APITypeOpenAI {
+		return a.ChatCompletion(ctx, req)
+	}
+	return a.Message(ctx, req)
+}
+
+// AutoStream 根据请求类型自动选择流式接口
+func (a *Adapter) AutoStream(ctx context.Context, req *LLMRequest) (<-chan *LLMResponseChunk, <-chan error) {
+	if a.ProviderAPIType(req.APIType) == model.APITypeOpenAI {
+		return a.ChatCompletionStream(ctx, req)
+	}
+	return a.MessageStream(ctx, req)
 }
 
 // ==================== OpenAI 接口 ====================

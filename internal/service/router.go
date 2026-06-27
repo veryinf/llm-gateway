@@ -13,16 +13,8 @@ import (
 type RouterResult struct {
 	Adapter           *provider.Adapter
 	UserModelName     string
-	ProviderModelName string                   // Provider 模型名称
+	ProviderModelName string                 // Provider 模型名称
 	Level             model.PassthroughLevel //实际生效的透传级别
-}
-
-// ProviderAPIType 返回 Provider 实际使用的 API 类型（优先 OpenAI）
-func (r *RouterResult) ProviderAPIType() model.LLMAPIType {
-	if r.Adapter.SupportOpenAI() {
-		return model.APITypeOpenAI
-	}
-	return model.APITypeAnthropic
 }
 
 type RouterService struct {

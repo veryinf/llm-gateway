@@ -6,8 +6,8 @@ import (
 	"net/http"
 
 	"llm-gateway/internal/core"
+	"llm-gateway/internal/database"
 
-	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 	"github.com/tidwall/gjson"
 	"gorm.io/gorm"
@@ -15,7 +15,7 @@ import (
 
 type BaseHandler struct {
 	DB           *gorm.DB
-	Store        *sqlx.DB
+	Store        *database.Store
 	Config       *core.Config
 	TokenManager *TokenManager
 }

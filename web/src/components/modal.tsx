@@ -1,5 +1,6 @@
 import { useState, useImperativeHandle, useRef, useCallback, useMemo } from 'react';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from './ui/sheet';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 
 type ModalAction<T> = {
   open(title: string, description?: string, meta?: T): void;
@@ -54,7 +55,7 @@ export function useModal<T = any>(initMeta?: T) {
       },
     }));
 
-    const Comp = props.type === 'drawer' ? ModalDrawer : ModalDrawer;
+    const Comp = props.type === 'dialog' ? ModalDialog : ModalDrawer;
     return <Comp {...props} {...override} open={visible} onOpenChange={setVisible} />;
   }, []);
 
@@ -96,5 +97,26 @@ function ModalDrawer(props: InnerModalProps) {
         <SheetFooter className="hidden"></SheetFooter>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function ModalDialog(props: InnerModalProps) {
+  return (
+    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+      <DialogContent className={props.className}>
+        {props.title || props.description ? (
+          <DialogHeader>
+            <DialogTitle>
+              <div className="flex items-center gap-2">
+                <span className="flex-1">{props.title}</span>
+                <div className="flex gap-2 items-center">{props.actions}</div>
+              </div>
+            </DialogTitle>
+            {props.description && <DialogDescription>{props.description}</DialogDescription>}
+          </DialogHeader>
+        ) : null}
+        <div className="overflow-auto max-h-[70vh]">{props.children}</div>
+      </DialogContent>
+    </Dialog>
   );
 }

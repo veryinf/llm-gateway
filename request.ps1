@@ -63,6 +63,7 @@ function Test-OpenAI {
         Add-Type -AssemblyName System.Net.Http
         $httpClient = [System.Net.Http.HttpClient]::new()
         $httpClient.DefaultRequestHeaders.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new("Bearer", $ApiKey)
+        $httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("PowerShell/LLM-Gateway-Test")
 
         $content = [System.Net.Http.StringContent]::new($streamBody, [System.Text.Encoding]::UTF8, "application/json")
         $response = $httpClient.PostAsync("$BaseUrl/v1/chat/completions", $content).Result
@@ -145,6 +146,7 @@ function Test-Anthropic {
         Add-Type -AssemblyName System.Net.Http
         $httpClient = [System.Net.Http.HttpClient]::new()
         $httpClient.DefaultRequestHeaders.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new("Bearer", $ApiKey)
+        $httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("PowerShell/LLM-Gateway-Test")
         $httpClient.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01")
 
         $content = [System.Net.Http.StringContent]::new($streamBody, [System.Text.Encoding]::UTF8, "application/json")

@@ -14,6 +14,7 @@ export interface RequestLog {
   isStream: boolean;
   promptTokens: number;
   completionTokens: number;
+  reasoningTokens: number;
   totalTokens: number;
   cachedTokens: number;
   isDetail: boolean;
@@ -27,14 +28,20 @@ export interface RequestLog {
 
 export interface RequestDetail {
   traceId: string;
-  requestBody: string;
-  responseBody: string;
+  request: string;
+  requestRaw: string;
+  response: string;
+  responseRaw: string;
+  reasoning: string;
 }
+
+export type ChunkType = 'message' | 'reasoning' | 'usage' | 'done';
 
 export interface RequestChunk {
   chunkId: number;
   traceId: string;
   index: number;
+  type: ChunkType;
   data: string;
   createdAt: string;
 }

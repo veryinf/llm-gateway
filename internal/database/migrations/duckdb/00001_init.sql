@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS request_logs (
     api_key_id        BIGINT,
     user_model        VARCHAR DEFAULT '',
     provider_model    VARCHAR DEFAULT '',
+    response_model    VARCHAR DEFAULT '',
     user_api_type     VARCHAR DEFAULT '',
     provider_api_type VARCHAR DEFAULT '',
     passthrough_level VARCHAR DEFAULT 'none',
@@ -11,6 +12,7 @@ CREATE TABLE IF NOT EXISTS request_logs (
     is_stream         BOOLEAN,
     prompt_tokens     INTEGER,
     completion_tokens INTEGER,
+    reasoning_tokens  INTEGER DEFAULT 0,
     total_tokens      INTEGER,
     cached_tokens     INTEGER DEFAULT 0,
     is_detail         BOOLEAN DEFAULT FALSE,
@@ -24,14 +26,18 @@ CREATE TABLE IF NOT EXISTS request_logs (
 
 CREATE TABLE IF NOT EXISTS request_details (
     trace_id      VARCHAR PRIMARY KEY,
-    request_body  VARCHAR DEFAULT '',
-    response_body VARCHAR DEFAULT ''
+    request       VARCHAR DEFAULT '',
+    request_raw   VARCHAR DEFAULT '',
+    response      VARCHAR DEFAULT '',
+    response_raw  VARCHAR DEFAULT '',
+    reasoning     VARCHAR DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS request_chunks (
     chunk_id    BIGINT,
     trace_id    VARCHAR,
     index       INTEGER,
+    type        VARCHAR DEFAULT 'message',
     data        VARCHAR,
     created_at  TIMESTAMP
 );

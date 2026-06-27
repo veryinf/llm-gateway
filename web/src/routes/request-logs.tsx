@@ -1,19 +1,23 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import JsonView from '@uiw/react-json-view';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loading } from '@/components/loader';
 import { PageHeader } from '@/components/page-header';
 import { useBreadcrumb } from '@/hooks/use-breadcrumb';
 import { useModal } from '@/components/modal';
+import { Descriptions, type DescriptionsItem } from '@/components/descriptions';
 import {
   requestLogService,
   requestDetailService,
   requestChunkService,
   type RequestLog,
   type RequestDetail,
+  type RequestChunk,
 } from '@/services/request-log';
 import type { API } from '@/typings';
 
@@ -212,104 +216,218 @@ function RequestLogDetail({ log, detail }: { log: RequestLog; detail?: RequestDe
     enabled: log.isStream && log.isDetail,
   });
 
+  const basicItems: DescriptionsItem[] = [
+    { label: 'Trace ID', value: <code className="text-xs">{log.traceId}</code> },
+    { label: '时间', value: new Date(log.createdAt).toLocaleString() },
+    { label: '用户模型', value: <code className="text-xs">{log.userModel}</code> },
+    { label: '提供商模型', value: <code className="text-xs">{log.providerModel}</code> },
+    { label: '用户 API', value: apiTypeLabels[log.userApiType] ?? log.userApiType },
+    { label: '提供商 API', value: apiTypeLabels[log.providerApiType] ?? log.providerApiType },
+    { label: '透传级别', value: passthroughLabels[log.passthroughLevel] ?? log.passthroughLevel },
+    { label: '类型', value: log.isStream ? '流式' : '非流式' },
+    { label: '状态码', value: String(log.statusCode) },
+    { label: '耗时', value: `${log.duration}ms` },
+    { label: '详细日志', value: log.isDetail ? '是' : '否' },
+    { label: '摘要', value: log.summary || '-', span: 2 },
+  ];
+
+  const tokenItems: DescriptionsItem[] = [
+    { label: 'Prompt', value: String(log.promptTokens) },
+    { label: 'Completion', value: String(log.completionTokens) },
+    { label: 'Reasoning', value: String(log.reasoningTokens) },
+    { label: 'Cached', value: String(log.cachedTokens) },
+    { label: 'Total', value: String(log.totalTokens) },
+  ];
+
+  const otherItems: DescriptionsItem[] = [
+    { label: 'IP 地址', value: log.ipAddress },
+    { label: 'User Agent', value: log.userAgent || '-', span: 2 },
+    { label: 'User ID', value: String(log.userId) },
+    { label: 'API Key ID', value: String(log.apiKeyId) },
+  ];
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid gap-2 md:grid-cols-2">
-        <DetailRow label="Trace ID" value={log.traceId} />
-        <DetailRow label="用户模型" value={log.userModel} />
-        <DetailRow label="提供商模型" value={log.providerModel} />
-        <DetailRow label="用户 API 类型" value={apiTypeLabels[log.userApiType] ?? log.userApiType} />
-        <DetailRow label="提供商 API 类型" value={apiTypeLabels[log.providerApiType] ?? log.providerApiType} />
-        <DetailRow label="透传级别" value={passthroughLabels[log.passthroughLevel] ?? log.passthroughLevel} />
-        <DetailRow label="摘要" value={log.summary || '-'} />
-        <DetailRow label="类型" value={log.isStream ? '流式' : '非流式'} />
-        <DetailRow label="状态码" value={String(log.statusCode)} />
-        <DetailRow label="耗时" value={`${log.duration}ms`} />
-        <DetailRow label="Prompt Tokens" value={String(log.promptTokens)} />
-        <DetailRow label="Completion Tokens" value={String(log.completionTokens)} />
-        <DetailRow label="Cached Tokens" value={String(log.cachedTokens)} />
-        <DetailRow label="IP 地址" value={log.ipAddress} />
-        <DetailRow label="User ID" value={String(log.userId)} />
-      </div>
+    <Tabs defaultValue="info" className="w-full">
+      <TabsList>
+        <TabsTrigger value="info">基本信息</TabsTrigger>
+        <TabsTrigger value="request">请求</TabsTrigger>
+        <TabsTrigger value="response">响应</TabsTrigger>
+        {log.isStream && <TabsTrigger value="chunks">流式响应</TabsTrigger>}
+      </TabsList>
 
-      {log.errorMessage && (
-        <div>
-          <span className="text-muted-foreground text-sm">错误信息：</span>
-          <pre className="bg-muted mt-1 overflow-auto rounded p-3 text-sm">{log.errorMessage}</pre>
-        </div>
-      )}
+      <TabsContent value="info" className="mt-4 space-y-4">
+        <Descriptions title="请求信息" items={basicItems} labelClassName="w-24" />
+        <Descriptions title="Token 用量" items={tokenItems} labelClassName="w-24" />
+        <Descriptions title="其他信息" items={otherItems} labelClassName="w-24" />
+        {log.errorMessage && (
+          <div>
+            <h4 className="font-medium mb-2">错误信息</h4>
+            <pre className="bg-muted overflow-auto rounded p-3 text-sm">{log.errorMessage}</pre>
+          </div>
+        )}
+      </TabsContent>
 
-      {detail?.requestBody && (
-        <div>
-          <span className="text-muted-foreground text-sm">请求 Body：</span>
-          <pre className="bg-muted mt-1 overflow-auto rounded p-3 text-sm max-h-60">
-            {formatJson(detail.requestBody)}
-          </pre>
-        </div>
-      )}
-
-      {detail?.responseBody && (
-        <div>
-          <span className="text-muted-foreground text-sm">响应 Body：</span>
-          <pre className="bg-muted mt-1 overflow-auto rounded p-3 text-sm max-h-60">
-            {formatJson(detail.responseBody)}
-          </pre>
-        </div>
-      )}
-
-      {log.isStream && log.isDetail && (
-        <div>
-          <span className="text-muted-foreground text-sm">流式响应：</span>
-          {chunksLoading ? (
-            <div className="mt-1 flex items-center gap-2">
-              <Loading size={16} /> <span className="text-sm">加载中...</span>
+      <TabsContent value="request" className="mt-4">
+        {detail?.request ? (
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium mb-2">请求内容</h4>
+              <pre className="bg-muted overflow-auto rounded p-4 text-sm max-h-[300px]">
+                {detail.request}
+              </pre>
             </div>
-          ) : chunks && chunks.length > 0 ? (
-            <>
-              <div className="bg-muted mt-1 overflow-auto rounded p-3 text-sm max-h-40">
-                {assembleStreamContent(chunks)}
-              </div>
-              <details className="mt-2">
-                <summary className="text-muted-foreground cursor-pointer text-xs">
-                  原始 Chunks（共 {chunks.length} 个）
-                </summary>
-                <div className="bg-muted mt-1 max-h-60 overflow-auto rounded p-3">
-                  {chunks.slice(0, 100).map((chunk) => (
-                    <pre key={chunk.index} className="mt-1 border-b border-gray-700 pb-1 text-xs break-all">
-                      [{chunk.index}] {formatChunkData(chunk.data)}
-                    </pre>
-                  ))}
-                  {chunks.length > 100 && (
-                    <span className="text-muted-foreground mt-1 text-xs">
-                      ... 还有 {chunks.length - 100} 个 chunk
-                    </span>
-                  )}
+            {detail.requestRaw && (
+              <div>
+                <h4 className="text-sm font-medium mb-2">原始请求</h4>
+                <div className="bg-muted overflow-auto rounded p-4 max-h-[300px]">
+                  <JsonViewer data={detail.requestRaw} />
                 </div>
-              </details>
-            </>
-          ) : (
-            <p className="text-muted-foreground mt-1 text-sm">无 chunk 数据</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-muted-foreground text-sm">无请求详情（需要开启详细日志记录）</p>
+        )}
+      </TabsContent>
+
+      <TabsContent value="response" className="mt-4">
+        <div className="space-y-4">
+          {detail?.reasoning && (
+            <div>
+              <h4 className="text-sm font-medium mb-2">推理过程</h4>
+              <pre className="bg-muted overflow-auto rounded p-4 text-sm max-h-[200px]">
+                {detail.reasoning}
+              </pre>
+            </div>
+          )}
+          {detail?.response && (
+            <div>
+              <h4 className="text-sm font-medium mb-2">消息正文</h4>
+              <pre className="bg-muted overflow-auto rounded p-4 text-sm max-h-[300px]">
+                {detail.response}
+              </pre>
+            </div>
+          )}
+          {detail?.responseRaw && (
+            <div>
+              <h4 className="text-sm font-medium mb-2">原始数据</h4>
+              <div className="bg-muted overflow-auto rounded p-4 max-h-[300px]">
+                <JsonViewer data={detail.responseRaw} />
+              </div>
+            </div>
+          )}
+          {!detail?.response && !detail?.reasoning && (
+            <p className="text-muted-foreground text-sm">无响应详情（需要开启详细日志记录）</p>
           )}
         </div>
+      </TabsContent>
+
+      {log.isStream && (
+        <TabsContent value="chunks" className="mt-4">
+          <StreamChunksContent chunks={chunks} isLoading={chunksLoading} />
+        </TabsContent>
       )}
-    </div>
+    </Tabs>
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+function StreamChunksContent({ chunks, isLoading }: { chunks?: RequestChunk[]; isLoading: boolean }) {
+  const { Modal: ChunkModal, modalHandler: chunkModalHandler, meta: chunkMeta } = useModal<RequestChunk>();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 p-4">
+        <Loading size={16} /> <span className="text-sm">加载中...</span>
+      </div>
+    );
+  }
+
+  if (!chunks || chunks.length === 0) {
+    return <p className="text-muted-foreground text-sm">无 chunk 数据</p>;
+  }
+
+  const chunkTypeLabels: Record<string, string> = {
+    message: '消息',
+    reasoning: '推理',
+    usage: '用量',
+    done: '结束',
+    other: '其他',
+  };
+
+  const chunkTypeVariants: Record<string, 'default' | 'secondary' | 'outline'> = {
+    message: 'default',
+    reasoning: 'secondary',
+    usage: 'outline',
+    done: 'outline',
+    other: 'outline',
+  };
+
   return (
-    <div>
-      <span className="text-muted-foreground text-sm">{label}</span>
-      <p className="text-sm break-all">{value}</p>
-    </div>
+    <>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-16">#</TableHead>
+            <TableHead className="w-20">类型</TableHead>
+            <TableHead>内容预览</TableHead>
+            <TableHead className="w-20">操作</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {chunks.slice(0, 100).map((chunk) => (
+            <TableRow key={chunk.index}>
+              <TableCell className="text-muted-foreground">{chunk.index}</TableCell>
+              <TableCell>
+                <Badge variant={chunkTypeVariants[chunk.type] ?? 'outline'}>
+                  {chunkTypeLabels[chunk.type] ?? chunk.type}
+                </Badge>
+              </TableCell>
+              <TableCell className="font-mono text-xs max-w-[500px] truncate" title={chunk.data}>
+                {chunk.data.length > 100 ? chunk.data.substring(0, 100) + '...' : chunk.data}
+              </TableCell>
+              <TableCell>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => chunkModalHandler.open(`Chunk #${chunk.index}`, undefined, chunk)}
+                >
+                  查看
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      {chunks.length > 100 && (
+        <p className="text-muted-foreground text-xs mt-2">
+          ... 还有 {chunks.length - 100} 个 chunk
+        </p>
+      )}
+
+      <ChunkModal type="dialog" className="max-w-[80vw] max-h-[80vh]" title={chunkMeta ? `Chunk #${chunkMeta.index} - ${chunkTypeLabels[chunkMeta.type] ?? chunkMeta.type}` : ''}>
+        {chunkMeta && (
+          <div className="bg-muted overflow-auto rounded p-4 max-h-[70vh]">
+            <JsonViewer data={chunkMeta.data} />
+          </div>
+        )}
+      </ChunkModal>
+    </>
   );
 }
 
-function formatJson(str: string): string {
+function JsonViewer({ data }: { data: string }) {
   try {
-    return JSON.stringify(JSON.parse(str), null, 2);
+    const parsed = JSON.parse(data);
+    return (
+      <JsonView
+        value={parsed}
+        collapsed={false}
+        displayDataTypes={false}
+        style={{ backgroundColor: 'transparent', fontSize: '13px' }}
+      />
+    );
   } catch {
-    return str;
+    return <pre className="text-sm break-all">{data}</pre>;
   }
 }
 

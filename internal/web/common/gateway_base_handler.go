@@ -9,6 +9,7 @@ import (
 	"llm-gateway/internal/provider"
 	"llm-gateway/internal/service"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -18,20 +19,29 @@ import (
 
 type GatewayBase struct {
 	BaseHandler
-	RouterService     *service.RouterService
-	RequestLogService *service.RequestLogService
+	RouterService *service.RouterService
+}
+
+// IsDetailEnabled 判断是否记录详细请求/响应
+func (h *GatewayBase) IsDetailEnabled() bool {
+	return service.GetConfigString(model.ConfigKeyRequestLogDetail) == "true"
 }
 
 func (h *GatewayBase) HandleNonStream(c echo.Context, llmReq *provider.LLMRequest, router *service.RouterResult) error {
 	ctx := h.Context(c)
 
 	resp, err := router.Adapter.AutoChat(c.Request().Context(), llmReq)
-	log := h.BuildRequestLog(ctx, router, llmReq, resp)
+	log := h.buildRequestLog(ctx, router, llmReq, resp)
 	if err != nil {
 		log.ErrorMessage = err.Error()
-		h.RequestLogService.RecordRequest(log)
-		h.RecordDetailIfEnabled(log, llmReq, resp)
+		h.Store.RecordRequest(log)
+		h.recordDetailIfEnabled(log, llmReq, resp, nil)
 		return h.ErrorJSON(c, http.StatusBadGateway, err.Error())
+	}
+	if llmReq.APIType == model.APITypeAnthropic {
+		resp, _ = resp.ToAnthropic()
+	} else {
+		resp, _ = resp.ToOpenAI()
 	}
 
 	c.Response().Header().Set("Content-Type", "application/json")
@@ -42,12 +52,12 @@ func (h *GatewayBase) HandleNonStream(c echo.Context, llmReq *provider.LLMReques
 
 	if copyErr != nil {
 		log.ErrorMessage = copyErr.Error()
-		h.RequestLogService.RecordRequest(log)
-		h.RecordDetailIfEnabled(log, llmReq, resp)
+		h.Store.RecordRequest(log)
+		h.recordDetailIfEnabled(log, llmReq, resp, nil)
 		return h.ErrorJSON(c, http.StatusBadGateway, copyErr.Error())
 	}
-	h.RequestLogService.RecordRequest(log)
-	h.RecordDetailIfEnabled(log, llmReq, resp)
+	h.Store.RecordRequest(log)
+	h.recordDetailIfEnabled(log, llmReq, resp, nil)
 	return nil
 }
 
@@ -63,9 +73,9 @@ func (h *GatewayBase) HandleStream(c echo.Context, llmReq *provider.LLMRequest, 
 
 	ctx := h.Context(c)
 
-	chunkCollector := provider.NewChunkCollector(ctx.TraceID, h.RequestLogService.IsDetailEnabled())
-	log := h.BuildRequestLog(ctx, router, llmReq, nil)
-	chunkCh, errCh := router.Adapter.ChatCompletionStream(c.Request().Context(), llmReq)
+	chunkCollector := provider.NewChunkCollector(ctx.TraceID, h.IsDetailEnabled())
+	log := h.buildRequestLog(ctx, router, llmReq, nil)
+	chunkCh, errCh := router.Adapter.AutoStream(c.Request().Context(), llmReq)
 
 	for chunk := range chunkCh {
 		if llmReq.APIType == model.APITypeAnthropic {
@@ -75,9 +85,9 @@ func (h *GatewayBase) HandleStream(c echo.Context, llmReq *provider.LLMRequest, 
 		}
 		_, _ = fmt.Fprintf(c.Response().Writer, "data: %s\n\n", chunk.Raw)
 		flusher.Flush()
-		chunkCollector.Add(chunk.RawData)
-		if chunk.Type == provider.ChunkTypeUsage {
-			h.RequestUsageFromChunk(log, chunk)
+		chunkCollector.Add(chunk)
+		if chunk.Type == model.ChunkTypeUsage {
+			extractUsageFromChunk(log, chunk)
 		}
 	}
 
@@ -88,8 +98,11 @@ func (h *GatewayBase) HandleStream(c echo.Context, llmReq *provider.LLMRequest, 
 		log.ErrorMessage = err.Error()
 	}
 
-	h.RequestLogService.RecordRequest(log)
-	h.RequestLogService.RecordChunks(chunkCollector.Chunks())
+	log.Duration = time.Since(ctx.StartTime).Milliseconds()
+	h.Store.RecordRequest(log)
+	chunks := chunkCollector.Chunks()
+	h.Store.RecordChunks(chunks)
+	h.recordDetailIfEnabled(log, llmReq, nil, chunks)
 	return nil
 }
 
@@ -98,16 +111,149 @@ func (h *GatewayBase) ErrorJSON(c echo.Context, code int, msg string) error {
 	return c.JSON(code, map[string]interface{}{"error": msg})
 }
 
-// RecordDetailIfEnabled 当开启详细日志时，额外记录请求/响应详情
-func (h *GatewayBase) RecordDetailIfEnabled(log *model.RequestLog, req *provider.LLMRequest, resp *provider.LLMResponse) {
-	if !h.RequestLogService.IsDetailEnabled() {
+// recordDetailIfEnabled 当开启详细日志时，额外记录请求/响应详情
+func (h *GatewayBase) recordDetailIfEnabled(log *model.RequestLog, req *provider.LLMRequest, resp *provider.LLMResponse, chunks []*model.RequestChunk) {
+	if !h.IsDetailEnabled() {
 		return
 	}
-	h.RequestLogService.RecordDetail(log.TraceID, req.RawObject.Raw, lo.If(resp != nil, resp.RawObject.Raw).Else(""))
+	detail := &model.RequestDetail{
+		TraceID: log.TraceID,
+	}
+	if req != nil && req.RawObject != nil {
+		detail.RequestRaw = req.RawObject.Raw
+		detail.Request = extractRequestText(req.RawObject)
+	}
+	if resp != nil && resp.RawObject != nil {
+		detail.ResponseRaw = resp.RawObject.Raw
+		extractResponse(detail, resp.RawObject)
+	}
+	if chunks != nil {
+		detail.ResponseRaw = ""
+		extractResponseFromChunks(detail, chunks)
+	}
+	h.Store.RecordDetail(log.TraceID, detail)
 }
 
-// BuildRequestLog 构造 RequestLog（不含错误信息）
-func (h *GatewayBase) BuildRequestLog(c *LeContext, router *service.RouterResult, req *provider.LLMRequest, resp *provider.LLMResponse) *model.RequestLog {
+// extractSummary 从请求体中提取最后的用户问题作为摘要
+func extractSummary(input *gjson.Result) string {
+	if !input.IsObject() {
+		return ""
+	}
+	messages := input.Get("messages")
+	if !messages.Exists() || !messages.IsArray() {
+		return ""
+	}
+	// 找到最后一条用户消息
+	var lastUserContent string
+	messages.ForEach(func(_, msg gjson.Result) bool {
+		if msg.Get("role").String() == "user" {
+			content := msg.Get("content")
+			if content.IsArray() {
+				content.ForEach(func(_, item gjson.Result) bool {
+					if item.Get("type").String() == "text" {
+						lastUserContent = item.Get("text").String()
+					}
+					return true
+				})
+			} else if content.Exists() {
+				lastUserContent = content.String()
+			}
+		}
+		return true
+	})
+	return core.TruncateStr(lastUserContent, 100)
+}
+
+// extractRequestText 从请求 JSON 提取纯文本（消息内容）
+func extractRequestText(input *gjson.Result) string {
+	if !input.IsObject() {
+		return ""
+	}
+	messages := input.Get("messages")
+	if !messages.Exists() || !messages.IsArray() {
+		return ""
+	}
+	var parts []string
+	messages.ForEach(func(_, msg gjson.Result) bool {
+		role := msg.Get("role").String()
+		content := msg.Get("content")
+		if content.IsArray() {
+			content.ForEach(func(_, item gjson.Result) bool {
+				if item.Get("type").String() == "text" {
+					parts = append(parts, item.Get("text").String())
+				}
+				return true
+			})
+		} else if content.Exists() && content.String() != "" {
+			parts = append(parts, fmt.Sprintf("[%s] %s", role, content.String()))
+		}
+		return true
+	})
+	return strings.Join(parts, "\n")
+}
+
+// extractResponse 从响应 JSON 提取响应内容和推理内容
+func extractResponse(detail *model.RequestDetail, input *gjson.Result) {
+	if !input.IsObject() {
+		return
+	}
+	// OpenAI 格式
+	choices := input.Get("choices")
+	if choices.Exists() && choices.IsArray() && len(choices.Array()) > 0 {
+		msg := choices.Array()[0].Get("message")
+		detail.Response = msg.Get("content").String()
+		if reasoning := msg.Get("reasoning_content"); reasoning.Exists() && reasoning.String() != "" {
+			detail.Reasoning = reasoning.String()
+		}
+		return
+	}
+	// Anthropic 格式
+	content := input.Get("content")
+	if content.Exists() && content.IsArray() && len(content.Array()) > 0 {
+		detail.Response = content.Array()[0].Get("text").String()
+	}
+	thinking := input.Get("thinking")
+	if thinking.Exists() && thinking.String() != "" {
+		detail.Reasoning = thinking.String()
+	}
+}
+
+// extractResponseFromChunks 从流式 chunks 提取响应内容和推理内容
+func extractResponseFromChunks(detail *model.RequestDetail, chunks []*model.RequestChunk) {
+	var responseParts, reasoningParts []string
+	for _, chunk := range chunks {
+		if !gjson.Valid(chunk.Data) {
+			continue
+		}
+		result := gjson.Parse(chunk.Data)
+		switch chunk.Type {
+		case model.ChunkTypeMessage:
+			// OpenAI: choices[0].delta.content
+			if text := result.Get("choices.0.delta.content"); text.Exists() {
+				responseParts = append(responseParts, text.String())
+			}
+			// Anthropic: delta.text
+			if text := result.Get("delta.text"); text.Exists() {
+				responseParts = append(responseParts, text.String())
+			}
+		case model.ChunkTypeReasoning:
+			// OpenAI: choices[0].delta.reasoning_content
+			if text := result.Get("choices.0.delta.reasoning_content"); text.Exists() {
+				reasoningParts = append(reasoningParts, text.String())
+			}
+			// Anthropic: thinking
+			if text := result.Get("delta.thinking"); text.Exists() {
+				reasoningParts = append(reasoningParts, text.String())
+			}
+		}
+	}
+	detail.Response = strings.Join(responseParts, "")
+	detail.Reasoning = strings.Join(reasoningParts, "")
+	detail.ResponseRaw = ""
+}
+
+// buildRequestLog 构造 RequestLog（不含错误信息）
+func (h *GatewayBase) buildRequestLog(c *LeContext, router *service.RouterResult, req *provider.LLMRequest, resp *provider.LLMResponse) *model.RequestLog {
 	log := &model.RequestLog{
 		TraceID:          c.TraceID,
 		UserID:           c.AuthUser.UID,
@@ -115,7 +261,7 @@ func (h *GatewayBase) BuildRequestLog(c *LeContext, router *service.RouterResult
 		UserModel:        router.UserModelName,
 		ProviderModel:    router.ProviderModelName,
 		UserApiType:      req.APIType,
-		ProviderApiType:  router.ProviderAPIType(),
+		ProviderApiType:  router.Adapter.ProviderAPIType(req.APIType),
 		PassthroughLevel: router.Level,
 		IsStream:         req.Stream,
 		StatusCode:       http.StatusOK,
@@ -123,6 +269,8 @@ func (h *GatewayBase) BuildRequestLog(c *LeContext, router *service.RouterResult
 		IPAddress:        c.RealIP(),
 		UserAgent:        req.Request.UserAgent(),
 		Summary:          extractSummary(req.RawObject),
+		IsDetail:         h.IsDetailEnabled(),
+		CreatedAt:        time.Now(),
 	}
 	if resp != nil {
 		log.ProviderApiType = resp.APIType
@@ -132,13 +280,13 @@ func (h *GatewayBase) BuildRequestLog(c *LeContext, router *service.RouterResult
 		}
 		log.StatusCode = resp.StatusCode
 		log.ResponseModel = resp.RawObject.Get("model").String()
-		extractTokenUsage(log, resp)
+		extractUsage(log, resp)
 	}
 	return log
 }
 
-// extractTokenUsage 从响应中提取 token 用量（自动识别 Anthropic / OpenAI 格式）
-func extractTokenUsage(log *model.RequestLog, resp *provider.LLMResponse) {
+// extractUsage 从响应中提取 token 用量（自动识别 Anthropic / OpenAI 格式）
+func extractUsage(log *model.RequestLog, resp *provider.LLMResponse) {
 	usage := resp.RawObject.Get("usage")
 	if !usage.Exists() {
 		return
@@ -146,6 +294,7 @@ func extractTokenUsage(log *model.RequestLog, resp *provider.LLMResponse) {
 	if usage.Get("input_tokens").Exists() {
 		log.PromptTokens = int(usage.Get("input_tokens").Int())
 		log.CompletionTokens = int(usage.Get("output_tokens").Int())
+		log.CachedTokens = int(usage.Get("cache_read_input_tokens").Int())
 		log.TotalTokens = log.PromptTokens + log.CompletionTokens
 	} else {
 		log.PromptTokens = int(usage.Get("prompt_tokens").Int())
@@ -156,37 +305,9 @@ func extractTokenUsage(log *model.RequestLog, resp *provider.LLMResponse) {
 	}
 }
 
-// extractSummary 从请求体中提取最后的用户问题作为摘要
-func extractSummary(input *gjson.Result) string {
-	if !input.IsObject() {
-		return ""
-	}
-	inputMessages := input.Get("messages")
-	if !inputMessages.Exists() || !inputMessages.IsArray() {
-		return ""
-	}
-	messages := lo.Filter(inputMessages.Array(), func(msg gjson.Result, _ int) bool {
-		return msg.Get("role").String() == "user"
-	})
-	if len(messages) > 0 {
-		inputContent := messages[len(messages)-1].Get("content")
-		if inputContent.IsArray() {
-			inputTexts := lo.Filter(inputContent.Array(), func(content gjson.Result, _ int) bool {
-				return content.Get("type").Str == "text"
-			})
-			if len(inputTexts) > 0 {
-				return core.TruncateStr(inputTexts[len(inputTexts)-1].Get("text").String(), 100)
-			}
-		} else {
-			return core.TruncateStr(inputContent.String(), 100)
-		}
-	}
-	return ""
-}
-
-// RequestUsageFromChunk 从 chunk 中提取 usage 信息更新到 log
-func (h *GatewayBase) RequestUsageFromChunk(log *model.RequestLog, chunk *provider.LLMResponseChunk) {
-	if chunk.Type != provider.ChunkTypeUsage {
+// extractUsageFromChunk 从 chunk 中提取 usage 信息更新到 log
+func extractUsageFromChunk(log *model.RequestLog, chunk *provider.LLMResponseChunk) {
+	if chunk.Type != model.ChunkTypeUsage {
 		return
 	}
 	if chunk.RawObject == nil {
@@ -199,6 +320,7 @@ func (h *GatewayBase) RequestUsageFromChunk(log *model.RequestLog, chunk *provid
 	if usage.Get("input_tokens").Exists() {
 		log.PromptTokens = int(usage.Get("input_tokens").Int())
 		log.CompletionTokens = int(usage.Get("output_tokens").Int())
+		log.CachedTokens = int(usage.Get("cache_read_input_tokens").Int())
 		log.TotalTokens = log.PromptTokens + log.CompletionTokens
 	} else {
 		log.PromptTokens = int(usage.Get("prompt_tokens").Int())

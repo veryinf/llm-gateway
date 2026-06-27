@@ -12,7 +12,6 @@ import (
 	"llm-gateway/internal/service"
 	"llm-gateway/internal/web"
 
-	"github.com/labstack/echo/v4"
 	"github.com/samber/lo"
 )
 
@@ -53,16 +52,12 @@ func StartServer(cfg *core.Config) {
 
 	// 初始化分析时序库
 	store := database.InitStore(cfg.DataDir)
-	defer func() {
-		if err := store.Close(); err != nil {
-			slog.Error("Error closing store database connection", "error", err.Error())
-		}
-	}()
 
-	webServer := web.InitHttpServer(db, store, cfg)
-	defer func(webServer *echo.Echo) {
+	webServer, store := web.InitHttpServer(db, store, cfg)
+	defer func() {
+		store.Close()
 		_ = webServer.Close()
-	}(webServer)
+	}()
 	err := webServer.Start(cfg.HttpAddr)
 	if err != nil {
 		slog.Error("failed to start web server", "error", err)

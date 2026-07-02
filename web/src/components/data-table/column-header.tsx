@@ -11,7 +11,7 @@ type DataTableColumnHeaderProps<TData, TValue> = React.HTMLAttributes<HTMLDivEle
 };
 
 export function DataTableColumnHeader<TData, TValue>({ column, title, className }: DataTableColumnHeaderProps<TData, TValue>) {
-  const selectedValues = new Set(column?.getFilterValue() as string[]);
+  const selectedValues = new Set(column?.getFilterValue() as (string | number)[]);
   const isFilter = selectedValues.size > 0;
   return (
     <div className={cn('flex items-center', className)}>

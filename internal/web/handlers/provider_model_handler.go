@@ -30,9 +30,8 @@ func (h *ProviderModelHandler) SearchProviderModels(c echo.Context) error {
 	query := h.DB.Model(&model.ProviderModel{}).Order("model_id DESC")
 
 	// 关键词搜索
-	if input.Kw != "" {
-		kw := "%" + input.Kw + "%"
-		query = query.Where("name LIKE ? OR display_name LIKE ?", kw, kw)
+	if pattern := input.EscapedKw(); pattern != "" {
+		query = query.Where("name LIKE ? ESCAPE '\\' OR display_name LIKE ? ESCAPE '\\'", pattern, pattern)
 	}
 
 	// 过滤条件

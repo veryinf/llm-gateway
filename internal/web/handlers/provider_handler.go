@@ -1,6 +1,11 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"time"
+
 	"llm-gateway/internal/model"
 	"llm-gateway/internal/provider"
 	"llm-gateway/internal/web/common"
@@ -20,6 +25,7 @@ func (h *ProviderHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/providers/update", h.UpdateProvider)
 	g.POST("/providers/remove", h.RemoveProvider)
 	g.POST("/providers/fetch-models", h.FetchProviderModels)
+	g.POST("/providers/test-model", h.TestProviderModel)
 }
 
 // SearchProviders 搜索 Provider 列表
@@ -31,20 +37,28 @@ func (h *ProviderHandler) SearchProviders(c echo.Context) error {
 
 	query := h.DB.Model(&model.Provider{}).Order("provider_id DESC")
 
-	// 关键词搜索
-	if input.Kw != "" {
-		kw := "%" + input.Kw + "%"
-		query = query.Where("title LIKE ? OR base_url LIKE ?", kw, kw)
+	// 关键词搜索 — 转义 LIKE 通配符
+	if pattern := input.EscapedKw(); pattern != "" {
+		query = query.Where("title LIKE ? ESCAPE '\\' OR base_url LIKE ? ESCAPE '\\'", pattern, pattern)
 	}
 
 	// 过滤条件
 	for _, filter := range input.Filters {
 		switch filter.Field {
 		case "is_active":
+			if err := validation.Validate(filter.Value, validation.In(true, false)); err != nil {
+				return h.Error(-11, "is_active 必须是布尔值")
+			}
 			query = query.Where("is_active = ?", filter.Value)
 		case "support_openai":
+			if err := validation.Validate(filter.Value, validation.In(true, false)); err != nil {
+				return h.Error(-11, "support_openai 必须是布尔值")
+			}
 			query = query.Where("support_openai = ?", filter.Value)
 		case "support_anthropic":
+			if err := validation.Validate(filter.Value, validation.In(true, false)); err != nil {
+				return h.Error(-11, "support_anthropic 必须是布尔值")
+			}
 			query = query.Where("support_anthropic = ?", filter.Value)
 		}
 	}
@@ -169,7 +183,9 @@ func (h *ProviderHandler) AddProvider(c echo.Context) error {
 				IsActive:   true,
 			})
 		}
-		h.DB.Create(&models)
+		if err := h.DB.Create(&models).Error; err != nil {
+			return h.Error(-21, "创建模型失败: "+err.Error())
+		}
 	}
 
 	return common.NewData(p)
@@ -354,8 +370,11 @@ func (h *ProviderHandler) FetchProviderModels(c echo.Context) error {
 	if err := c.Bind(input); err != nil {
 		return h.Error(-11, "请求参数错误")
 	}
-	if input.BaseURL == "" {
-		return h.Error(-11, "Base URL 不能为空")
+	if err := validation.ValidateStruct(input,
+		validation.Field(&input.BaseURL, validation.Required),
+		validation.Field(&input.APIKey, validation.Required),
+	); err != nil {
+		return h.Error(-11, err.Error())
 	}
 
 	p := &model.Provider{
@@ -373,4 +392,83 @@ func (h *ProviderHandler) FetchProviderModels(c echo.Context) error {
 		return h.Error(-22, err.Error())
 	}
 	return common.NewDataSet(models, int64(len(models)))
+}
+
+// TestModelResult 模型测试结果
+type TestModelResult struct {
+	Success   bool   `json:"success"`
+	LatencyMs int64  `json:"latencyMs"`
+	Error     string `json:"error,omitempty"`
+}
+
+// TestProviderModel 测试指定 Provider 上的某个模型是否可用
+func (h *ProviderHandler) TestProviderModel(c echo.Context) error {
+	input := &struct {
+		ProviderID uint   `json:"providerId"`
+		ModelName  string `json:"modelName"`
+	}{}
+	if err := c.Bind(input); err != nil {
+		return h.Error(-11, "请求参数错误")
+	}
+	if err := validation.ValidateStruct(input,
+		validation.Field(&input.ProviderID, validation.Required),
+		validation.Field(&input.ModelName, validation.Required),
+	); err != nil {
+		return h.Error(-11, err.Error())
+	}
+
+	var p model.Provider
+	if err := h.DB.First(&p, input.ProviderID).Error; err != nil {
+		return h.Error(-24, "Provider 不存在")
+	}
+
+	apiType := model.APITypeOpenAI
+	if !p.SupportOpenai && p.SupportAnthropic {
+		apiType = model.APITypeAnthropic
+	}
+
+	payload := map[string]any{
+		"model": input.ModelName,
+		"messages": []map[string]string{
+			{"role": "user", "content": "ping"},
+		},
+		"max_tokens": 1,
+	}
+	bodyBytes, err := json.Marshal(payload)
+	if err != nil {
+		return common.NewData(TestModelResult{Success: false, Error: "构建请求失败: " + err.Error()})
+	}
+
+	ctx := c.Request().Context()
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, "", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return common.NewData(TestModelResult{Success: false, Error: "构建 HTTP 请求失败: " + err.Error()})
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	llmReq := &provider.LLMRequest{
+		APIType: apiType,
+		Request: httpReq,
+		Model:   input.ModelName,
+		Stream:  false,
+	}
+
+	adapter, err := provider.NewAdapter(&p)
+	if err != nil {
+		return common.NewData(TestModelResult{Success: false, Error: "创建适配器失败: " + err.Error()})
+	}
+
+	start := time.Now()
+	var testErr error
+	if apiType == model.APITypeOpenAI {
+		_, testErr = adapter.ChatCompletion(ctx, llmReq)
+	} else {
+		_, testErr = adapter.Message(ctx, llmReq)
+	}
+	latency := time.Since(start).Milliseconds()
+
+	if testErr != nil {
+		return common.NewData(TestModelResult{Success: false, LatencyMs: latency, Error: testErr.Error()})
+	}
+	return common.NewData(TestModelResult{Success: true, LatencyMs: latency})
 }

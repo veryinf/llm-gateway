@@ -39,10 +39,9 @@ func (h *RequestLogHandler) SearchRequestLogs(c echo.Context) error {
 	args := []interface{}{}
 
 	// 关键词搜索
-	if input.Kw != "" {
-		where = append(where, "(trace_id LIKE ? OR model_name LIKE ? OR ip_address LIKE ?)")
-		kw := "%" + input.Kw + "%"
-		args = append(args, kw, kw, kw)
+	if pattern := input.EscapedKw(); pattern != "" {
+		where = append(where, "(trace_id LIKE ? ESCAPE '\\' OR model_name LIKE ? ESCAPE '\\' OR ip_address LIKE ? ESCAPE '\\')")
+		args = append(args, pattern, pattern, pattern)
 	}
 
 	// 过滤条件

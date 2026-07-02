@@ -128,6 +128,7 @@ function ProviderModelsPage() {
       columns={columns}
       service={providerModelService}
       options={{ showSelectColumn: false }}
+      optionColumn={(column, domRender) => ({ ...column, cell: (res) => domRender(res.row.original) })}
       formInitialValue={formInitialValue}
       renderViewDetail={(entity) => <ProviderModelDetail entity={entity} />}
       renderViewForm={(form, _entity, _formType) => {

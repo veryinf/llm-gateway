@@ -27,7 +27,7 @@ export function useAllUsers() {
   const { data: allUsers = [], ...rest } = useQuery<User[]>({
     queryKey: ['all-users'],
     queryFn: async () => {
-      const result = await userService.search({ pagination: { pageIndex: 1, pageSize: 10000 } });
+      const result = await userService.search({ pagination: { index: 1, size: 10000 } });
       return result.dataSet ?? [];
     },
   });

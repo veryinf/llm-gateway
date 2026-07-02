@@ -19,9 +19,8 @@ func (h *UserModelHandler) SearchUserModels(c echo.Context) error {
 	}
 	query := h.DB.Model(&model.UserModel{}).Order("user_model_id DESC")
 
-	if input.Kw != "" {
-		kw := "%" + input.Kw + "%"
-		query = query.Where("name LIKE ? OR display_name LIKE ? OR description LIKE ?", kw, kw, kw)
+	if pattern := input.EscapedKw(); pattern != "" {
+		query = query.Where("name LIKE ? ESCAPE '\\' OR display_name LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\'", pattern, pattern, pattern)
 	}
 
 	for _, filter := range input.Filters {

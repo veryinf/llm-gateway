@@ -1,9 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '@tanstack/react-form';
 import type { ColumnDef } from '@tanstack/react-table';
 import { useQuery } from '@tanstack/react-query';
-import { Page, type PageInformation } from '@/components/full-page';
+import { FlaskConical, Loader2 } from 'lucide-react';
+import { Page, type FormType, type PageInformation } from '@/components/full-page';
 import { Descriptions } from '@/components/descriptions';
 import { FormFieldInput, FormFieldSwitch, FormFieldTagsInput } from '@/components/form';
 import { Badge } from '@/components/ui/badge';
@@ -11,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Loading } from '@/components/loader';
-import { providerService, fetchProviderModels, type Provider } from '@/services/provider';
+import { providerService, fetchProviderModels, testProviderModel, type Provider } from '@/services/provider';
 import { providerModelService } from '@/services/provider-model';
 import { useBreadcrumb } from '@/hooks/use-breadcrumb';
 import { toast } from 'sonner';
@@ -44,13 +45,7 @@ const columns: ColumnDef<Provider, any>[] = [
   {
     accessorKey: 'title',
     header: '名称',
-    meta: { label: '名称', className: 'w-[160px]', viewDetail: true },
-  },
-  {
-    accessorKey: 'baseUrl',
-    header: 'Base URL',
-    meta: { label: 'Base URL', className: 'w-[240px]' },
-    cell: ({ row }) => <span className="font-mono text-xs">{row.original.baseUrl}</span>,
+    meta: { label: '名称', viewDetail: true },
   },
   {
     accessorKey: 'protocol',
@@ -85,8 +80,9 @@ const columns: ColumnDef<Provider, any>[] = [
 
 // ---------- ProviderForm (新增/编辑共用) ----------
 
-function ProviderForm({ form, entity }: { form: EasyFormApi<any>; entity?: Provider; }) {
-  const isEdit = !!entity;
+function ProviderForm({ form, entity, formType }: { form: EasyFormApi<any>; entity?: Provider; formType: FormType; }) {
+  const isEdit = formType == 'update';
+  console.log(isEdit);
 
   const v = useStore(form.store ?? form, (s: any) => s.values ?? s) as any;
   const baseUrl = v?.baseUrl ?? '';
@@ -107,8 +103,10 @@ function ProviderForm({ form, entity }: { form: EasyFormApi<any>; entity?: Provi
 
   async function handleFetchModels() {
     if (!baseUrl) { toast.error('请先填写 BaseURL'); return []; }
+    const apiKey = v?.apiKey || (entity as any)?.rawApiKey || '';
+    if (!apiKey) { toast.error('请填写 API Key'); return []; }
     try {
-      const fetched = await fetchProviderModels(baseUrl, v?.apiKey || '');
+      const fetched = await fetchProviderModels(baseUrl, apiKey);
       toast.success(`获取到 ${fetched.length} 个模型`);
       return fetched.map((m) => m.id);
     } catch { toast.error('获取模型列表失败'); return []; }
@@ -171,20 +169,15 @@ function ProvidersPage() {
       columns={columns}
       service={providerService}
       options={{ showSelectColumn: false }}
+      optionColumn={(column, domRender) => ({ ...column, cell: (res) => domRender(res.row.original) })}
       renderViewDetail={(entity) => <ProviderDetail entity={entity} />}
-      formInitialValue={(_type, entity) => ({
-        providerId: entity?.providerId ?? 0,
-        title: entity?.title ?? '',
-        baseUrl: entity?.baseUrl ?? '',
-        apiKey: '',
-        supportOpenai: entity?.supportOpenai ?? true,
-        openaiBaseUrl: entity?.openaiBaseUrl ?? '',
-        supportAnthropic: entity?.supportAnthropic ?? true,
-        anthropicBaseUrl: entity?.anthropicBaseUrl ?? '',
-        isActive: entity?.isActive ?? true,
-        isDefault: entity?.isDefault ?? false,
+      formInitialValue={(formType, entity) => (formType == 'add' ? {
+        supportOpenai: true,
+        supportAnthropic: true,
+        isActive: true,
+        isDefault: false,
         models: [],
-      })}
+      } : { ...entity!, apiKey: '', rawApiKey: entity?.apiKey ?? '' })}
       formAddValidator={(e) => {
         if (!e.supportOpenai && !e.supportAnthropic) { toast.error('请至少支持一种协议'); return false; }
         return true;
@@ -193,7 +186,7 @@ function ProvidersPage() {
         if (!e.supportOpenai && !e.supportAnthropic) { toast.error('请至少支持一种协议'); return false; }
         return true;
       }}
-      renderViewForm={(form, entity) => <ProviderForm form={form} entity={entity} />}
+      renderViewForm={(form, entity, formType) => <ProviderForm form={form} entity={entity} formType={formType} />}
     />
   );
 }
@@ -213,14 +206,73 @@ function ProviderDetail({ entity }: { entity: Provider; }) {
     },
   });
 
+  const [testStates, setTestStates] = useState<Record<number, { status: 'testing' | 'success' | 'error'; latencyMs?: number; error?: string; }>>({});
+  const [batchTesting, setBatchTesting] = useState(false);
+
+  async function handleTestOne(modelId: number, modelName: string) {
+    setTestStates((prev) => ({ ...prev, [modelId]: { status: 'testing' } }));
+    try {
+      const result = await testProviderModel(pid, modelName);
+      setTestStates((prev) => ({
+        ...prev,
+        [modelId]: {
+          status: result.success ? 'success' : 'error',
+          latencyMs: result.latencyMs,
+          error: result.error,
+        },
+      }));
+    } catch (e: any) {
+      setTestStates((prev) => ({
+        ...prev,
+        [modelId]: { status: 'error', error: e?.message ?? '请求失败' },
+      }));
+    }
+  }
+
+  async function handleBatchTest() {
+    if (models.length === 0) return;
+    setBatchTesting(true);
+    const initial: Record<number, { status: 'testing'; }> = {};
+    for (const m of models) initial[m.modelId] = { status: 'testing' };
+    setTestStates(initial);
+
+    let successCount = 0;
+    let failCount = 0;
+    await Promise.allSettled(
+      models.map(async (m) => {
+        try {
+          const result = await testProviderModel(pid, m.name);
+          setTestStates((prev) => ({
+            ...prev,
+            [m.modelId]: {
+              status: result.success ? 'success' : 'error',
+              latencyMs: result.latencyMs,
+              error: result.error,
+            },
+          }));
+          if (result.success) successCount++; else failCount++;
+        } catch (e: any) {
+          setTestStates((prev) => ({
+            ...prev,
+            [m.modelId]: { status: 'error', error: e?.message ?? '请求失败' },
+          }));
+          failCount++;
+        }
+      })
+    );
+
+    setBatchTesting(false);
+    toast.success(`批量测试完成：成功 ${successCount}，失败 ${failCount}`);
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <Descriptions
         title="服务商信息"
-        labelClassName="w-20"
+        labelClassName="w-30"
         items={[
           { label: '名称', value: entity.title },
-          { label: 'Base URL', value: <span className="font-mono text-xs">{entity.baseUrl}</span> },
+          { label: '状态', value: <Badge variant={entity.isActive ? 'default' : 'destructive'}>{entity.isActive ? '启用' : '禁用'}</Badge> },
           {
             label: '协议',
             value: (
@@ -231,13 +283,27 @@ function ProviderDetail({ entity }: { entity: Provider; }) {
             ),
           },
           { label: '默认服务商', value: entity.isDefault ? <Badge variant="default">是</Badge> : <Badge variant="secondary">否</Badge> },
-          { label: '状态', value: <Badge variant={entity.isActive ? 'default' : 'destructive'}>{entity.isActive ? '启用' : '禁用'}</Badge> },
+          { label: 'Base URL', value: <span className="font-mono text-xs">{entity.baseUrl}</span> },
         ]}
       />
 
       <Card>
         <CardHeader>
-          <CardTitle>上游模型 ({models.length})</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>上游模型 ({models.length})</CardTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleBatchTest}
+              disabled={batchTesting || modelsLoading || models.length === 0}
+            >
+              {batchTesting ? (
+                <><Loader2 className="animate-spin" /> 测试中...</>
+              ) : (
+                <><FlaskConical /> 批量测试</>
+              )}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {modelsLoading ? <Loading size={20} /> : (
@@ -245,28 +311,49 @@ function ProviderDetail({ entity }: { entity: Provider; }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>模型名称</TableHead>
-                  <TableHead>展示名</TableHead>
                   <TableHead>上下文</TableHead>
                   <TableHead>最大输出</TableHead>
                   <TableHead>输入单价</TableHead>
                   <TableHead>输出单价</TableHead>
-                  <TableHead>状态</TableHead>
+                  <TableHead className="text-center">状态</TableHead>
+                  <TableHead className="w-40">测试</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {models.length === 0 ? (
-                  <TableRow><TableCell colSpan={7} className="text-muted-foreground text-center">暂无模型</TableCell></TableRow>
-                ) : models.map((m) => (
-                  <TableRow key={m.modelId}>
-                    <TableCell className="font-mono text-xs">{m.name}</TableCell>
-                    <TableCell>{m.displayName || '-'}</TableCell>
-                    <TableCell>{formatTokens(m.maxContextTokens)}</TableCell>
-                    <TableCell>{formatTokens(m.maxOutputTokens)}</TableCell>
-                    <TableCell>{formatPrice(m.inputPrice)}</TableCell>
-                    <TableCell>{formatPrice(m.outputPrice)}</TableCell>
-                    <TableCell><Badge variant={m.isActive ? 'default' : 'destructive'}>{m.isActive ? '启用' : '禁用'}</Badge></TableCell>
-                  </TableRow>
-                ))}
+                  <TableRow><TableCell colSpan={8} className="text-muted-foreground text-center">暂无模型</TableCell></TableRow>
+                ) : models.map((m) => {
+                  const state = testStates[m.modelId];
+                  return (
+                    <TableRow key={m.modelId}>
+                      <TableCell className="font-mono text-xs">{m.displayName ? `${m.displayName} (${m.name})` : m.name}</TableCell>
+                      <TableCell>{formatTokens(m.maxContextTokens)}</TableCell>
+                      <TableCell>{formatTokens(m.maxOutputTokens)}</TableCell>
+                      <TableCell>{formatPrice(m.inputPrice)}</TableCell>
+                      <TableCell>{formatPrice(m.outputPrice)}</TableCell>
+                      <TableCell className="text-center"><Badge variant={m.isActive ? 'default' : 'destructive'}>{m.isActive ? '启用' : '禁用'}</Badge></TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleTestOne(m.modelId, m.name)}
+                            disabled={state?.status === 'testing' || batchTesting}
+                            title="测试模型"
+                          >
+                            {state?.status === 'testing' ? <Loader2 className="animate-spin" /> : <FlaskConical />}
+                          </Button>
+                          {state?.status === 'success' && (
+                            <Badge variant="default">✓ {state.latencyMs}ms</Badge>
+                          )}
+                          {state?.status === 'error' && (
+                            <Badge variant="destructive" title={state.error}>失败</Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}

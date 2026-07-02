@@ -110,6 +110,7 @@ function UsersPage() {
       columns={allColumns}
       service={userService}
       options={{ showSelectColumn: false }}
+      optionColumn={(column, domRender) => ({ ...column, cell: (res) => domRender(res.row.original) })}
       renderViewDetail={(entity) => <UserDetail entity={entity} />}
       formInitialValue={(_type, entity) => ({
         uid: entity?.uid ?? 0,

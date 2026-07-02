@@ -42,7 +42,7 @@ export function FullTable<T>(props: FullTableProps<T>) {
   const requestState: FullTableState = {
     kw: globalFilter,
     filters: columnFilters.map(f => ({ field: f.id, value: f.value })),
-    pagination,
+    pagination: { index: pagination.pageIndex + 1, size: pagination.pageSize },
   };
 
   useEffect(() => {

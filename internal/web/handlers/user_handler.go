@@ -26,9 +26,8 @@ func (h *UserHandler) SearchUsers(c echo.Context) error {
 	}
 	query := h.DB.Model(&model.User{}).Order("uid DESC")
 	// 关键词搜索：username、name、phone、department
-	if input.Kw != "" {
-		kw := "%" + input.Kw + "%"
-		query = query.Where("username LIKE ? OR name LIKE ? OR phone LIKE ? OR department LIKE ?", kw, kw, kw, kw)
+	if pattern := input.EscapedKw(); pattern != "" {
+		query = query.Where("username LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\' OR department LIKE ? ESCAPE '\\'", pattern, pattern, pattern, pattern)
 	}
 	// 过滤条件
 	for _, filter := range input.Filters {

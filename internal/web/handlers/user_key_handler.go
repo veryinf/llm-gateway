@@ -25,9 +25,8 @@ func (h *UserKeyHandler) SearchUserKeys(c echo.Context) error {
 	query := h.DB.Model(&model.UserKey{}).Order("key_id DESC")
 
 	// 关键词搜索：title、key
-	if input.Kw != "" {
-		kw := "%" + input.Kw + "%"
-		query = query.Where("title LIKE ? OR key LIKE ?", kw, kw)
+	if pattern := input.EscapedKw(); pattern != "" {
+		query = query.Where("title LIKE ? ESCAPE '\\' OR key LIKE ? ESCAPE '\\'", pattern, pattern)
 	}
 
 	// 过滤条件

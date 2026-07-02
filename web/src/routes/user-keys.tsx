@@ -75,6 +75,7 @@ function AppKeysPage() {
       columns={columns}
       service={userKeyService}
       options={{ showSelectColumn: false }}
+      optionColumn={(column, domRender) => ({ ...column, cell: (res) => domRender(res.row.original) })}
       formInitialValue={(_type, entity) => ({
         keyId: entity?.keyId ?? 0,
         uid: (entity?.uid ? String(entity.uid) : '') as any,

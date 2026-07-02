@@ -1,6 +1,6 @@
 import { useState, useImperativeHandle, useRef, useCallback, useMemo } from 'react';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from './ui/sheet';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 
 type ModalAction<T> = {
   open(title: string, description?: string, meta?: T): void;

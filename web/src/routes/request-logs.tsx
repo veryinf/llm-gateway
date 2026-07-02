@@ -430,38 +430,3 @@ function JsonViewer({ data }: { data: string }) {
     return <pre className="text-sm break-all">{data}</pre>;
   }
 }
-
-function assembleStreamContent(chunks: { data: string }[]): string {
-  const parts: string[] = [];
-  for (const chunk of chunks) {
-    try {
-      const parsed = JSON.parse(chunk.data);
-      const delta = parsed.choices?.[0]?.delta;
-      if (delta?.content) {
-        parts.push(delta.content);
-      }
-    } catch {
-      // skip unparseable chunks
-    }
-  }
-  return parts.join('');
-}
-
-function formatChunkData(raw: string): string {
-  try {
-    const data = JSON.parse(raw);
-    const delta = data.choices?.[0]?.delta;
-    if (delta?.content) {
-      return `content: ${JSON.stringify(delta.content)}`;
-    }
-    if (delta?.role) {
-      return `role: ${delta.role}`;
-    }
-    if (data.usage) {
-      return `usage: prompt=${data.usage.prompt_tokens} completion=${data.usage.completion_tokens}`;
-    }
-    return JSON.stringify(data, null, 0);
-  } catch {
-    return raw;
-  }
-}

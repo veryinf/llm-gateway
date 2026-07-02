@@ -102,8 +102,8 @@ export function FormFieldCheckboxGroup<T extends any = any>(props: FormFieldProp
 
   const field = useField({ name: props.name, form: props.form, validators, mode: 'array' });
   const isInvalid = !field.state.meta.isValid;
-  const handleChange = (value: CheckedState, optionValue: string) => {
-    const stateValue: string[] = field.state.value ?? [];
+  const handleChange = (value: CheckedState, optionValue: string | number) => {
+    const stateValue: (string | number)[] = field.state.value ?? [];
     if (value === true) {
       if (!stateValue.includes(optionValue)) {
         field.pushValue(optionValue);

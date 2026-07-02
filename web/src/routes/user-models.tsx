@@ -32,7 +32,7 @@ const columns: ColumnDef<UserModel, any>[] = [
   {
     accessorKey: 'name',
     header: '模型名称',
-    meta: { label: '模型名称', className: 'w-[180px]', viewDetail: true },
+    meta: { label: '模型名称', viewDetail: true },
   },
   {
     accessorKey: 'displayName',
@@ -79,6 +79,7 @@ function UserModelsPage() {
       columns={columns}
       service={userModelService}
       options={{ showSelectColumn: false, useRefetchDetail: true }}
+      optionColumn={(column, domRender) => ({ ...column, cell: (res) => domRender(res.row.original) })}
       formInitialValue={formInitialValue}
       renderViewDetail={(entity) => <UserModelDetail entity={entity} />}
       renderViewForm={(form, _entity, _formType) => (
@@ -93,7 +94,7 @@ function UserModelsPage() {
   );
 }
 
-function UserModelDetail({ entity }: { entity: UserModel }) {
+function UserModelDetail({ entity }: { entity: UserModel; }) {
   const queryClient = useQueryClient();
 
   const { data: routers = [], isLoading: routersLoading } = useQuery({
@@ -101,7 +102,7 @@ function UserModelDetail({ entity }: { entity: UserModel }) {
     queryFn: async () => {
       const result = await userModelRouterService.search({
         filters: [{ field: 'userModelId', value: entity.userModelId }],
-        pagination: { pageIndex: 1, pageSize: 100 },
+        pagination: { index: 1, size: 100 },
       });
       return result.dataSet ?? [];
     },
@@ -109,7 +110,7 @@ function UserModelDetail({ entity }: { entity: UserModel }) {
 
   const { data: providerModelsData } = useQuery({
     queryKey: ['provider-models-list-for-router'],
-    queryFn: () => providerModelService.search({ pagination: { pageIndex: 1, pageSize: 1000 } }),
+    queryFn: () => providerModelService.search({ pagination: { index: 1, size: 1000 } }),
   });
 
   const providerModelMap = new Map<number, ProviderModel>();

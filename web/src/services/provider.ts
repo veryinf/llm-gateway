@@ -20,7 +20,7 @@ export function useAllProviders() {
   const { data: allProviders = [], ...rest } = useQuery<Provider[]>({
     queryKey: ['all-providers'],
     queryFn: async () => {
-      const result = await providerService.search({ pagination: { pageIndex: 1, pageSize: 10000 } });
+      const result = await providerService.search({ pagination: { index: 1, size: 10000 } });
       return result.dataSet ?? [];
     },
   });
@@ -61,10 +61,21 @@ export const providerService: API.Service<Provider> = {
   },
 };
 
-export async function fetchProviderModels(baseUrl: string, apiKey: string): Promise<{ id: string }[]> {
-  const res = await request.post<API.DataSet<{ id: string }>>('/providers/fetch-models', {
+export async function fetchProviderModels(baseUrl: string, apiKey: string): Promise<{ id: string; }[]> {
+  const res = await request.post<API.DataSet<{ id: string; }>>('/providers/fetch-models', {
     baseUrl,
     apiKey,
   });
   return res.data.dataSet ?? [];
+}
+
+export interface TestModelResult {
+  success: boolean;
+  latencyMs: number;
+  error?: string;
+}
+
+export async function testProviderModel(providerId: number, modelName: string): Promise<TestModelResult> {
+  const res = await request.post<API.Data<TestModelResult>>('/providers/test-model', { providerId, modelName });
+  return res.data.data ?? { success: false, latencyMs: 0, error: '响应数据为空' };
 }

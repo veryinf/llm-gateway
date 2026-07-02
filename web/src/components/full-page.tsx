@@ -7,8 +7,7 @@ import { type ColumnDef } from '@tanstack/react-table';
 import type { API } from '@/typings';
 import { FullTable, type FullTableState } from './data-table/full-table';
 import { Checkbox } from './ui/checkbox';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from './ui/dropdown-menu';
-import { Ellipsis, ReceiptText, SquarePen, Trash2 } from 'lucide-react';
+import { ReceiptText, SquarePen, Trash2 } from 'lucide-react';
 import { useConfirm } from './confirm';
 import { usePopupForm } from './form';
 import { pick } from 'lodash-es';
@@ -17,6 +16,7 @@ import type { EasyFormMeta, EasyFormApi } from './form/utils';
 import { useQuery } from '@tanstack/react-query';
 import { Loading } from './loader';
 import { useBreadcrumb, type BreadcrumbItem } from '@/hooks/use-breadcrumb';
+import { EasyButton } from './easy-button';
 
 export type PageInformation = {
   /** 页面唯一标识符（英文） */
@@ -28,7 +28,7 @@ export type PageInformation = {
   breadcrumbs?: BreadcrumbItem[];
 };
 
-type FormType = 'add' | 'update';
+export type FormType = 'add' | 'update';
 
 type PageProps<TEntity> = PropsWithChildren<{
   /** 页面信息配置 */
@@ -38,10 +38,11 @@ type PageProps<TEntity> = PropsWithChildren<{
   columns: ColumnDef<TEntity, {}>[];
   /** 数据服务，提供增删改查等操作 */
   service: API.Service<TEntity>;
+  optionColumn?: (defaultDef: ColumnDef<TEntity, {}>, domRender: (entity: TEntity) => ReactNode) => ColumnDef<TEntity, {}>;
   /** 实体转换函数，用于转换从服务获取的实体数据 */
   entityTransfer?: (entity: TEntity) => TEntity;
   /** 添加表单初始值函数，用于初始化添加表单的值 */
-  formInitialValue?: (formType: FormType, entity?: TEntity) => Promise<TEntity> | TEntity;
+  formInitialValue?: (formType: FormType, entity?: TEntity) => Promise<Partial<TEntity>> | Partial<TEntity>;
   /** 添加表单验证器，验证添加操作的数据是否有效 */
   formAddValidator?: (entity: TEntity) => Promise<boolean> | boolean;
   /** 更新表单验证器，验证更新操作的数据是否有效 */
@@ -60,8 +61,6 @@ type PageProps<TEntity> = PropsWithChildren<{
   options?: {
     /** 是否显示选择列 */
     showSelectColumn?: boolean;
-    /** 是否显示操作列 */
-    showOptionColumn?: boolean;
     /** 查看详情时是否重新获取数据 */
     useRefetchDetail?: boolean;
     /** 更新数据时是否重新获取数据 */
@@ -80,7 +79,7 @@ export function Page<TEntity>(props: PageProps<TEntity>) {
   const { confirmHandler, Confirm } = useConfirm();
   const tableState = useRef<FullTableState | undefined>(undefined);
   const { infomation, options = {} } = props;
-  const { showSelectColumn = true, showOptionColumn = true, useRefetchDetail = false, useRefetchUpdate = false } = options;
+  const { showSelectColumn = true, useRefetchDetail = false, useRefetchUpdate = false } = options;
   const {
     data: source,
     refetch,
@@ -190,67 +189,45 @@ export function Page<TEntity>(props: PageProps<TEntity>) {
         meta: { thClassName: 'w-8' },
       });
     }
-    if (showOptionColumn) {
-      c.push({
+    if (props.optionColumn) {
+      const defaultDef = {
         header: '操作',
         accessorKey: 'actions',
         enableSorting: false,
         enableHiding: false,
-        meta: { className: 'w-14' },
-        cell: ({ row }) => {
-          const entity = row.original;
-          return (
-            <>
-              <DropdownMenu modal={false}>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="data-[state=open]:bg-muted flex h-8 w-8 p-0">
-                    <Ellipsis className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-[160px]">
-                  {(props.onViewDetail || props.renderViewDetail) && (
-                    <DropdownMenuItem
-                      onClick={() => {
-                        if (props.renderViewDetail) {
-                          modalHandler.open(`查看${infomation.entityName}详情`, '', { entity });
-                        } else {
-                          props.onViewDetail!(entity);
-                        }
-                      }}
-                    >
-                      详情
-                      <DropdownMenuShortcut>
-                        <ReceiptText size={16} />
-                      </DropdownMenuShortcut>
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuItem
-                    onClick={async () => {
-                      let initValue = entity;
-                      if (props.formInitialValue) {
-                        initValue = await props.formInitialValue('update', initValue);
-                      }
-                      formHandler.open(`编辑${infomation.entityName} - ${props.service.title(entity)}`, initValue, { type: 'update' });
-                    }}
-                  >
-                    编辑
-                    <DropdownMenuShortcut>
-                      <SquarePen size={16} />
-                    </DropdownMenuShortcut>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem variant="destructive" onClick={() => handleDelete(entity)}>
-                    删除
-                    <DropdownMenuShortcut>
-                      <Trash2 size={16} />
-                    </DropdownMenuShortcut>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </>
-          );
-        },
-      });
+        meta: { className: 'w-14 text-center' },
+      };
+      const domRender = (entity: TEntity) => <>
+        <div className="flex">
+          <EasyButton tooltip="查看详情" variant="link" size="icon-sm"
+            onClick={() => {
+              if (props.renderViewDetail) {
+                modalHandler.open(`查看${infomation.entityName}详情`, '', { entity });
+              } else {
+                props.onViewDetail!(entity);
+              }
+            }}
+          >
+            <ReceiptText size={16} />
+          </EasyButton>
+          <EasyButton tooltip="编辑" variant="link" size="icon-sm"
+            onClick={async () => {
+              let initValue = entity;
+              if (props.formInitialValue) {
+                initValue = (await props.formInitialValue('update', initValue)) as any;
+              }
+              formHandler.open(`编辑${infomation.entityName} - ${props.service.title(entity)}`, initValue, { type: 'update' });
+            }}
+          >
+            <SquarePen size={16} />
+          </EasyButton>
+          <EasyButton tooltip="删除" variant="link" size="icon-sm" onClick={() => handleDelete(entity)}>
+            <Trash2 size={16} className="text-destructive" />
+          </EasyButton>
+        </div>
+      </>;
+
+      c.push(props.optionColumn(defaultDef, domRender));
     }
     return c;
   }, [props.ready !== false]);
@@ -390,7 +367,7 @@ function ViewForm<TEntity>(props: {
     return props.render.renderViewUpdate(props.form, entity!);
   }
   if (props.render.renderViewForm) {
-    return props.render.renderViewForm(props.form, entity, 'add');
+    return props.render.renderViewForm(props.form, entity, props.formState.type);
   }
   return null;
 }

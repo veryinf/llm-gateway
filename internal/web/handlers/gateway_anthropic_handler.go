@@ -29,7 +29,7 @@ func (h *AnthropicGatewayHandler) HandleMessages(c echo.Context) error {
 	}
 	router, err := h.RouterService.ResolveProvider(llmReq.Model)
 	if err != nil {
-		return h.ErrorJSON(c, http.StatusNotFound, "no provider available")
+		return h.ErrorJSON(c, http.StatusNotFound, err.Error())
 	}
 
 	if llmReq.Stream {

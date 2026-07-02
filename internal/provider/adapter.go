@@ -216,6 +216,7 @@ func (a *Adapter) ListModels(ctx context.Context) ([]ModelInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
+	httpReq.Method = http.MethodGet
 
 	resp, err := a.httpClient.Do(httpReq)
 	if err != nil {

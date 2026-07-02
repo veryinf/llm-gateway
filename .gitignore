@@ -10,6 +10,8 @@ gcc/
 # Data
 db/
 !db/.gitkeep
+static/
+!static/.gitkeep
 
 # IDE
 .idea/

@@ -1,21 +1,30 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useForm } from '@tanstack/react-form';
+import { z } from 'zod';
 import { Page, type PageInformation } from '@/components/full-page';
 import { Descriptions } from '@/components/descriptions';
-import { FormFieldInput, FormFieldSwitch, FormFieldTextarea } from '@/components/form';
+import { FormFieldInput, FormFieldSelect, FormFieldSwitch, FormFieldTextarea } from '@/components/form';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Loading } from '@/components/loader';
-import { toast } from 'sonner';
-import { Trash2 } from 'lucide-react';
+import { useModal } from '@/components/modal';
+import { useConfirm } from '@/components/confirm';
+import { Plus, Trash2 } from 'lucide-react';
+import { UI } from '@/lib';
 import { userModelService, type UserModel } from '@/services/user-model';
 import { userModelRouterService } from '@/services/user-model-router';
 import { providerModelService, type ProviderModel } from '@/services/provider-model';
 import { useBreadcrumb } from '@/hooks/use-breadcrumb';
+
+const addRouterSchema = z.object({
+  providerModelId: z.string().min(1, '请选择上游模型'),
+  priority: z.number({ message: '必填项' }).int('必须是整数').min(0, '不能为负数'),
+});
 
 export const Route = createFileRoute('/user-models')({
   component: UserModelsPage,
@@ -96,6 +105,8 @@ function UserModelsPage() {
 
 function UserModelDetail({ entity }: { entity: UserModel; }) {
   const queryClient = useQueryClient();
+  const { Modal, modalHandler } = useModal();
+  const { Confirm, confirmHandler } = useConfirm();
 
   const { data: routers = [], isLoading: routersLoading } = useQuery({
     queryKey: ['user-model-routers', entity.userModelId],
@@ -116,13 +127,92 @@ function UserModelDetail({ entity }: { entity: UserModel; }) {
   const providerModelMap = new Map<number, ProviderModel>();
   (providerModelsData?.dataSet ?? []).forEach((m) => providerModelMap.set(m.modelId, m));
 
+  const providerModelOptions = useMemo(
+    () => (providerModelsData?.dataSet ?? []).map((m) => ({
+      label: m.displayName
+        ? `${m.displayName} (${m.provider?.title ?? '-'})`
+        : `${m.name} (${m.provider?.title ?? '-'})`,
+      value: m.modelId,
+    })),
+    [providerModelsData],
+  );
+
+  const defaultPriority = useMemo(() => {
+    if (routers.length === 0) return 0;
+    return Math.max(...routers.map((r) => r.priority)) + 1;
+  }, [routers]);
+
   const deleteMutation = useMutation({
     mutationFn: (routerId: number) => userModelRouterService.delete(routerId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['user-model-routers', entity.userModelId] });
-      toast.success('删除成功');
     },
   });
+
+  const handleDelete = (routerId: number) => {
+    confirmHandler.confirmInvoke(
+      '确认删除',
+      async () => {
+        const ok = await UI.tips(deleteMutation.mutateAsync(routerId), '删除成功');
+        if (ok) {
+          return ok;
+        }
+        return false;
+      },
+      '确认要删除此路由规则吗？',
+      true,
+    );
+  };
+
+  const addForm = useForm({
+    defaultValues: {
+      providerModelId: '',
+      priority: 0,
+    },
+    validators: {
+      onChange: addRouterSchema,
+    },
+    onSubmit: async ({ value }) => {
+      const ok = await UI.tips(
+        userModelRouterService.add({
+          routerId: 0,
+          userModelId: entity.userModelId,
+          providerModelId: Number(value.providerModelId),
+          priority: value.priority,
+        }),
+        '新增路由成功',
+      );
+      if (ok) {
+        modalHandler.close();
+        queryClient.invalidateQueries({ queryKey: ['user-model-routers', entity.userModelId] });
+      }
+    },
+  });
+
+  const handleOpenAdd = () => {
+    addForm.reset({
+      providerModelId: '',
+      priority: defaultPriority,
+    });
+    modalHandler.show({
+      title: '新增路由规则',
+      description: `为「${entity.displayName || entity.name}」配置新的上游路由`,
+      actions: (
+        <>
+          <Button className="h-8 px-6" variant="secondary" onClick={() => modalHandler.close()}>
+            取消
+          </Button>
+          <addForm.Subscribe>
+            {(state) => (
+              <Button className="h-8 px-6" onClick={() => addForm.handleSubmit()} disabled={state.isSubmitting}>
+                {state.isSubmitting ? '提交中...' : '确认'}
+              </Button>
+            )}
+          </addForm.Subscribe>
+        </>
+      ),
+    });
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -142,7 +232,12 @@ function UserModelDetail({ entity }: { entity: UserModel; }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>路由规则</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>路由规则</CardTitle>
+            <Button variant="outline" size="sm" onClick={handleOpenAdd}>
+              <Plus className="size-4" /> 新增
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {routersLoading ? (
@@ -176,7 +271,7 @@ function UserModelDetail({ entity }: { entity: UserModel; }) {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => deleteMutation.mutate(r.routerId)}
+                            onClick={() => handleDelete(r.routerId)}
                           >
                             <Trash2 className="size-4 text-destructive" />
                           </Button>
@@ -190,6 +285,31 @@ function UserModelDetail({ entity }: { entity: UserModel; }) {
           )}
         </CardContent>
       </Card>
+
+      <Modal type="dialog">
+        <div className="grid grid-cols-12 gap-4">
+          <FormFieldSelect
+            className="col-span-12"
+            form={addForm}
+            name="providerModelId"
+            title="上游模型"
+            required
+            placeholder="选择 ProviderModel"
+            options={providerModelOptions}
+          />
+          <FormFieldInput
+            className="col-span-12"
+            form={addForm}
+            name="priority"
+            title="优先级"
+            type="number"
+            required
+            description="数值越小越靠前"
+          />
+        </div>
+      </Modal>
+
+      <Confirm />
     </div>
   );
 }

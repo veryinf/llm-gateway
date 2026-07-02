@@ -33,9 +33,9 @@ const menuSet = {
     { title: '用户端模型', url: '/user-models', icon: Globe },
   ],
   routing: [
-    { title: '系统设置', url: '/settings', icon: Settings },
     { title: '请求记录', url: '/request-logs', icon: ScrollText },
     { title: '用量统计', url: '/usage-stats', icon: BarChart3 },
+    { title: '系统设置', url: '/settings', icon: Settings },
   ],
 };
 
@@ -66,17 +66,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarGroup>
 
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-          <SidebarGroupLabel>统计</SidebarGroupLabel>
-          <SidebarGroupContent className="flex flex-col gap-2">
-            <SidebarMenu>
-              {menuSet.routing.map((item) => (
-                <MenuItemRender key={item.url} item={item} />
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarGroup className="group-data-[collapsible=icon]:hidden">
           <SidebarGroupLabel>用户</SidebarGroupLabel>
           <SidebarGroupContent className="flex flex-col gap-2">
             <SidebarMenu>
@@ -92,6 +81,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarGroupContent className="flex flex-col gap-2">
             <SidebarMenu>
               {menuSet.upstream.map((item) => (
+                <MenuItemRender key={item.url} item={item} />
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+          <SidebarGroupLabel>统计</SidebarGroupLabel>
+          <SidebarGroupContent className="flex flex-col gap-2">
+            <SidebarMenu>
+              {menuSet.routing.map((item) => (
                 <MenuItemRender key={item.url} item={item} />
               ))}
             </SidebarMenu>

@@ -9,6 +9,7 @@ import (
 	"llm-gateway/internal/model"
 
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // LLMRequest LLM 请求封装
@@ -82,4 +83,44 @@ func (r *LLMRequest) ToOpenAI() (*LLMRequest, error) {
 		Stream:    r.Stream,
 		RawObject: r.RawObject,
 	}, nil
+}
+
+// SetRequestModel overrides the top-level "model" field in the underlying
+// HTTP request body with modelName using sjson, which preserves all other
+// fields and ordering verbatim and escapes the new value automatically.
+//
+// If modelName is empty this is a no-op. If the body is not valid JSON,
+// or has no top-level "model" field, or sjson fails to apply the change,
+// the original body bytes are restored untouched and no error is returned.
+func (r *LLMRequest) SetRequestModel(modelName string) error {
+	if modelName == "" {
+		return nil
+	}
+
+	bodyBytes, err := io.ReadAll(r.Request.Body)
+	if err != nil {
+		return fmt.Errorf("read body: %w", err)
+	}
+	_ = r.Request.Body.Close()
+
+	if !gjson.ValidBytes(bodyBytes) {
+		r.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		return nil
+	}
+
+	// Only override when the field already exists; sjson.SetBytes would
+	// otherwise insert a new "model" key which changes body semantics.
+	if !gjson.GetBytes(bodyBytes, "model").Exists() {
+		r.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		return nil
+	}
+
+	newBody, err := sjson.SetBytes(bodyBytes, "model", modelName)
+	if err != nil {
+		r.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		return nil
+	}
+
+	r.Request.Body = io.NopCloser(bytes.NewReader(newBody))
+	return nil
 }

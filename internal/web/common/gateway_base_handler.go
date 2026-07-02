@@ -29,6 +29,11 @@ func (h *GatewayBase) IsDetailEnabled() bool {
 
 func (h *GatewayBase) HandleNonStream(c echo.Context, llmReq *provider.LLMRequest, router *service.RouterResult) error {
 	ctx := h.Context(c)
+	if router.UserModelName != router.ProviderModelName {
+		if err := llmReq.SetRequestModel(router.ProviderModelName); err != nil {
+			return h.ErrorJSON(c, http.StatusBadRequest, err.Error())
+		}
+	}
 
 	resp, err := router.Adapter.AutoChat(c.Request().Context(), llmReq)
 	log := h.buildRequestLog(ctx, router, llmReq, resp)
@@ -72,6 +77,11 @@ func (h *GatewayBase) HandleStream(c echo.Context, llmReq *provider.LLMRequest, 
 	}
 
 	ctx := h.Context(c)
+	if router.UserModelName != router.ProviderModelName {
+		if err := llmReq.SetRequestModel(router.ProviderModelName); err != nil {
+			return h.ErrorJSON(c, http.StatusBadRequest, err.Error())
+		}
+	}
 
 	chunkCollector := provider.NewChunkCollector(ctx.TraceID, h.IsDetailEnabled())
 	log := h.buildRequestLog(ctx, router, llmReq, nil)

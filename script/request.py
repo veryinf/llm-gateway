@@ -26,7 +26,7 @@ import urllib.request
 # 用户配置（修改此处即可自定义测试，CLI 参数 / 环境变量可覆盖）
 # ============================================================
 DEFAULT_HOST: str = "http://localhost:3001"        # 服务器地址
-DEFAULT_MODEL: str = "MiniMax-M3"                   # 测试模型（OpenAI / Anthropic 共用）
+DEFAULT_MODEL: str = "basic"                   # 测试模型（OpenAI / Anthropic 共用）
 DEFAULT_API_KEY: str = "sk-c7d79944f064315b0ce5a04c3c1daef632b43401765eea13f5fd391f0c6732c3"                          # 默认 sk- 密钥（留空则强制走 --api-key 或 LLM_API_KEY）
 PROMPT_NON_STREAM: str = "你好，请用一句话介绍自己"  # 非流式测试提示词
 PROMPT_STREAM: str = "从1数到5"                    # 流式测试提示词

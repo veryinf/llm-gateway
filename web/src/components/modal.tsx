@@ -1,12 +1,6 @@
-import { useState, useImperativeHandle, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from './ui/sheet';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
-
-type ModalAction<T> = {
-  open(title: string, description?: string, meta?: T): void;
-  show(props: Partial<ModalProps>, meta?: T): void;
-  close(): void;
-};
 
 type ModalProps = Omit<InnerModalProps, 'open' | 'onOpenChange'> & {
   type?: 'drawer' | 'dialog';
@@ -25,50 +19,34 @@ type InnerModalProps = {
 };
 
 export function useModal<T = any>(initMeta?: T) {
-  const modalRef = useRef<ModalAction<T>>(null);
+  const [visible, setVisible] = useState(false);
+  const [override, setOverride] = useState<Partial<InnerModalProps>>();
   const [meta, setMeta] = useState<T | undefined>(initMeta);
+  const debugId = useRef(`mr-${Math.random().toString(36).slice(2, 6)}`).current;
+  console.log('[modal-debug] useModal init', debugId);
 
   const Modal = useCallback((props: ModalProps) => {
-    const [visible, setVisible] = useState(false);
-    const [override, setOverride] = useState<Partial<InnerModalProps>>();
-
-    useImperativeHandle(modalRef, () => ({
-      open: (title: string, description?: string, meta?: T) => {
-        setOverride({
-          ...override,
-          title,
-          description,
-        });
-        setMeta(meta);
-        setVisible(true);
-      },
-      show: (props: Partial<ModalProps>, meta?: T) => {
-        setOverride({
-          ...override,
-          ...props,
-        });
-        setMeta(meta);
-        setVisible(true);
-      },
-      close: () => {
-        setVisible(false);
-      },
-    }));
-
+    console.log('[modal-debug] Modal render', debugId, 'visible=', visible);
     const Comp = props.type === 'dialog' ? ModalDialog : ModalDrawer;
     return <Comp {...props} {...override} open={visible} onOpenChange={setVisible} />;
-  }, []);
+  }, [override, visible]);
 
   const modalHandler = useMemo(
     () => ({
       open: (title: string, description?: string, meta?: T) => {
-        modalRef.current?.open(title, description, meta);
+        console.log('[modal-debug] modalHandler.open', debugId, '→ setVisible(true)');
+        setOverride((prev) => ({ ...(prev ?? {}), title, description }));
+        setMeta(meta);
+        setVisible(true);
       },
       show: (props: Partial<ModalProps>, meta?: T) => {
-        modalRef.current?.show(props, meta);
+        setOverride((prev) => ({ ...(prev ?? {}), ...props }));
+        setMeta(meta);
+        setVisible(true);
       },
       close: () => {
-        modalRef.current?.close();
+        console.log('[modal-debug] modalHandler.close', debugId, '→ setVisible(false)');
+        setVisible(false);
       },
     }),
     [],

@@ -149,14 +149,12 @@ export function Page<TEntity>(props: PageProps<TEntity>) {
   const columns: ColumnDef<TEntity, {}>[] = useMemo(() => {
     const c = [
       ...props.columns.map((column) => {
-        if (typeof column.header === 'string' || !column.meta?.label) {
-          if (!column.meta) {
-            column.meta = {};
-          }
-          column.meta.label = column.header as string;
+        const newColumn = { ...column };
+        if (typeof newColumn.header === 'string' || !newColumn.meta?.label) {
+          newColumn.meta = { ...(newColumn.meta ?? {}), label: newColumn.header as string };
         }
-        if ((props.renderViewDetail || props.onViewDetail) && !column.cell && column.meta.viewDetail) {
-          column.cell = (cell) => {
+        if ((props.renderViewDetail || props.onViewDetail) && !newColumn.cell && newColumn.meta?.viewDetail) {
+          newColumn.cell = (cell) => {
             const entity = cell.row.original;
             return (
               <a
@@ -171,12 +169,12 @@ export function Page<TEntity>(props: PageProps<TEntity>) {
                   }
                 }}
               >
-                {(entity as any)[(column as any).accessorKey]}
+                {(entity as any)[(newColumn as any).accessorKey]}
               </a>
             );
           };
         }
-        return column;
+        return newColumn;
       }),
     ];
     if (showSelectColumn) {

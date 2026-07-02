@@ -43,8 +43,17 @@ function Write-Err { param([string]$msg) Write-Tee "× $msg" "Red" }
 
 $BuildVersion = if (Test-Path env:CI_COMMIT_TAG) { $env:CI_COMMIT_TAG } else { "dev" }
 $BuildTime = Get-Date -Format "2006-01-02 15:04:05"
-$BuildEnv = if ($Command -eq "build" -or $Command -eq "build-all") { "production" } else { "development" }
-$LdFlags = "-s -w -X 'llm-gateway/internal/core.BuildEnv=$BuildEnv' -X 'llm-gateway/internal/core.BuildTime=$BuildTime' -X 'llm-gateway/internal/core.BuildVersion=$BuildVersion'"
+$IsProdBuild = $Command -eq "build" -or $Command -eq "build-all"
+$BuildEnv = if ($IsProdBuild) { "production" } else { "development" }
+
+# 变量注入（生产/开发共用）
+$VarFlags = "-X 'llm-gateway/internal/core.BuildEnv=$BuildEnv' -X 'llm-gateway/internal/core.BuildTime=$BuildTime' -X 'llm-gateway/internal/core.BuildVersion=$BuildVersion'"
+
+# 生产 ldflags：剥离符号表 (-s) + DWARF 调试信息 (-w)
+$ProdLdFlags = "-s -w $VarFlags"
+
+# 开发 ldflags：保留符号，便于 panic 堆栈定位、pprof 函数名、dlv 调试
+$DevLdFlags = $VarFlags
 
 switch ($Command) {
     "setup" {
@@ -69,9 +78,9 @@ switch ($Command) {
     }
 
     "build" {
-        Write-Step "Building $BinaryName..."
+        Write-Step "Building $BinaryName (production, stripped)..."
         New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
-        Run "go build -ldflags=""$LdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/"
+        Run "go build -ldflags=""$ProdLdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/"
         if ($LASTEXITCODE -eq 0) {
             Write-OK "Build success: $BuildDir/$BinaryName"
         } else {
@@ -85,18 +94,16 @@ switch ($Command) {
         New-Item -ItemType Directory -Force -Path $DataDir, $BuildDir | Out-Null
 
         if ($DebugMode) {
-            # Debug mode: keep symbols, run with Delve
-            $DbgFlags = "-X 'llm-gateway/internal/core.BuildEnv=development' -X 'llm-gateway/internal/core.BuildTime=$BuildTime' -X 'llm-gateway/internal/core.BuildVersion=$BuildVersion'"
-            Write-Step "Building (debug) and starting with Delve..."
-            Run "go build -ldflags=""$DbgFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/"
+            Write-Step "Building (debug, symbols kept) and starting with Delve..."
+            Run "go build -ldflags=""$DevLdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/"
             if ($LASTEXITCODE -ne 0) { Write-Err "Build failed"; exit $LASTEXITCODE }
             Write-OK "Build done, starting dlv..."
             $startArgs = @("exec", "$BuildDir/$BinaryName", "--headless", "--listen=:2345", "--api-version=2", "--accept-multiclient", "--")
             if ($LogBoth) { $startArgs += "--log", "both" }
             & dlv @startArgs
         } else {
-            Write-Step "Building and starting server in dev mode..."
-            Run "go build -ldflags=""$LdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/"
+            Write-Step "Building (dev, symbols kept) and starting server..."
+            Run "go build -ldflags=""$DevLdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/"
             if ($LASTEXITCODE -ne 0) { Write-Err "Build failed"; exit $LASTEXITCODE }
             Write-OK "Build done, starting..."
             $startArgs = @()
@@ -116,9 +123,9 @@ switch ($Command) {
         Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "static"
         New-Item -ItemType Directory -Force -Path "static" | Out-Null
         Copy-Item -Recurse "$WebDir/dist/*" "static/"
-        Write-Step "Building $BinaryName (with embedded frontend)..."
+        Write-Step "Building $BinaryName (production, stripped, with embedded frontend)..."
         New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
-        Run "go build -ldflags=""$LdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/"
+        Run "go build -ldflags=""$ProdLdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/"
         if ($LASTEXITCODE -eq 0) { Write-OK "Build all → $BuildDir/$BinaryName (standalone, frontend embedded)" }
     }
 

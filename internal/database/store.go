@@ -183,6 +183,9 @@ func (s *Store) flushLogs(logs []*model.RequestLog) {
 	if err := appender.Flush(); err != nil {
 		slog.Error("failed to flush logs", "error", err)
 	}
+
+	// 预聚合到 stats_hourly
+	s.aggregateHourly(logs)
 }
 
 // flushDetails 使用 Appender 批量写入 request_details

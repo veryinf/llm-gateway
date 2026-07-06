@@ -68,6 +68,8 @@ func (h *UserModelRouterHandler) AddUserModelRouter(c echo.Context) error {
 		return h.Error(-11, err.Error())
 	}
 
+	input.IsActive = true
+
 	if err := h.DB.Create(input).Error; err != nil {
 		return h.Error(-21, err.Error())
 	}
@@ -90,6 +92,9 @@ func (h *UserModelRouterHandler) UpdateUserModelRouter(c echo.Context) error {
 	}
 	if input.Get("priority").Exists() {
 		newState["priority"] = input.Get("priority").Uint()
+	}
+	if input.Get("isActive").Exists() {
+		newState["is_active"] = input.Get("isActive").Bool()
 	}
 
 	if len(newState) == 0 {

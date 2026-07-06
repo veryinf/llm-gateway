@@ -313,6 +313,7 @@ func (h *ProviderHandler) UpdateProvider(c echo.Context) error {
 		for name, modelID := range existingMap {
 			if !newSet[name] {
 				h.DB.Where("upstream_model_id = ?", modelID).Delete(&model.UserModel{})
+				h.DB.Where("provider_model_id = ?", modelID).Delete(&model.UserModelRouter{})
 				h.DB.Delete(&model.ProviderModel{}, modelID)
 			}
 		}
@@ -351,6 +352,7 @@ func (h *ProviderHandler) RemoveProvider(c echo.Context) error {
 	h.DB.Model(&model.ProviderModel{}).Where("provider_id = ?", input.ProviderID).Pluck("model_id", &modelIDs)
 	if len(modelIDs) > 0 {
 		h.DB.Where("upstream_model_id IN ?", modelIDs).Delete(&model.UserModel{})
+		h.DB.Where("provider_model_id IN ?", modelIDs).Delete(&model.UserModelRouter{})
 		h.DB.Where("provider_id = ?", input.ProviderID).Delete(&model.ProviderModel{})
 	}
 

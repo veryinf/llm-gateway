@@ -38,6 +38,7 @@ func (h *GatewayBase) HandleNonStream(c echo.Context, llmReq *provider.LLMReques
 	resp, err := router.Adapter.AutoChat(c.Request().Context(), llmReq)
 	log := h.buildRequestLog(ctx, router, llmReq, resp)
 	if err != nil {
+		log.StatusCode = http.StatusBadGateway
 		log.ErrorMessage = err.Error()
 		h.Store.RecordRequest(log)
 		h.recordDetailIfEnabled(log, llmReq, resp, nil)
@@ -105,6 +106,7 @@ func (h *GatewayBase) HandleStream(c echo.Context, llmReq *provider.LLMRequest, 
 		errData, _ := json.Marshal(map[string]string{"error": err.Error()})
 		_, _ = fmt.Fprintf(c.Response().Writer, "data: %s\n\n", errData)
 		flusher.Flush()
+		log.StatusCode = http.StatusBadGateway
 		log.ErrorMessage = err.Error()
 	}
 

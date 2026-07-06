@@ -38,7 +38,7 @@ func (s *RouterService) ResolveProvider(inputModel string) (*RouterResult, error
 	}
 
 	var userModelRouter model.UserModelRouter
-	if err := s.db.Where("user_model_id = ?", userModel.UserModelID).Order("priority ASC, router_id ASC").First(&userModelRouter).Error; err != nil {
+	if err := s.db.Where("user_model_id = ? AND is_active = ?", userModel.UserModelID, true).Order("priority ASC, router_id ASC").First(&userModelRouter).Error; err != nil {
 		if level == model.PassthroughLevelNone {
 			return nil, fmt.Errorf("no router entry for model %q", inputModel)
 		}

@@ -6,6 +6,7 @@ export interface UserModelRouter {
   userModelId: number;
   providerModelId: number;
   priority: number;
+  isActive: boolean;
 }
 
 export const userModelRouterService: API.Service<UserModelRouter> = {

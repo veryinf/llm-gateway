@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as UsersRouteImport } from './routes/users'
 import { Route as UserModelsRouteImport } from './routes/user-models'
 import { Route as UserKeysRouteImport } from './routes/user-keys'
+import { Route as UsageStatsRouteImport } from './routes/usage-stats'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RequestLogsRouteImport } from './routes/request-logs'
 import { Route as ProvidersRouteImport } from './routes/providers'
@@ -33,6 +34,11 @@ const UserModelsRoute = UserModelsRouteImport.update({
 const UserKeysRoute = UserKeysRouteImport.update({
   id: '/user-keys',
   path: '/user-keys',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const UsageStatsRoute = UsageStatsRouteImport.update({
+  id: '/usage-stats',
+  path: '/usage-stats',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -78,6 +84,7 @@ export interface FileRoutesByFullPath {
   '/providers': typeof ProvidersRoute
   '/request-logs': typeof RequestLogsRoute
   '/settings': typeof SettingsRoute
+  '/usage-stats': typeof UsageStatsRoute
   '/user-keys': typeof UserKeysRoute
   '/user-models': typeof UserModelsRoute
   '/users': typeof UsersRoute
@@ -90,6 +97,7 @@ export interface FileRoutesByTo {
   '/providers': typeof ProvidersRoute
   '/request-logs': typeof RequestLogsRoute
   '/settings': typeof SettingsRoute
+  '/usage-stats': typeof UsageStatsRoute
   '/user-keys': typeof UserKeysRoute
   '/user-models': typeof UserModelsRoute
   '/users': typeof UsersRoute
@@ -103,6 +111,7 @@ export interface FileRoutesById {
   '/providers': typeof ProvidersRoute
   '/request-logs': typeof RequestLogsRoute
   '/settings': typeof SettingsRoute
+  '/usage-stats': typeof UsageStatsRoute
   '/user-keys': typeof UserKeysRoute
   '/user-models': typeof UserModelsRoute
   '/users': typeof UsersRoute
@@ -117,6 +126,7 @@ export interface FileRouteTypes {
     | '/providers'
     | '/request-logs'
     | '/settings'
+    | '/usage-stats'
     | '/user-keys'
     | '/user-models'
     | '/users'
@@ -129,6 +139,7 @@ export interface FileRouteTypes {
     | '/providers'
     | '/request-logs'
     | '/settings'
+    | '/usage-stats'
     | '/user-keys'
     | '/user-models'
     | '/users'
@@ -141,6 +152,7 @@ export interface FileRouteTypes {
     | '/providers'
     | '/request-logs'
     | '/settings'
+    | '/usage-stats'
     | '/user-keys'
     | '/user-models'
     | '/users'
@@ -154,6 +166,7 @@ export interface RootRouteChildren {
   ProvidersRoute: typeof ProvidersRoute
   RequestLogsRoute: typeof RequestLogsRoute
   SettingsRoute: typeof SettingsRoute
+  UsageStatsRoute: typeof UsageStatsRoute
   UserKeysRoute: typeof UserKeysRoute
   UserModelsRoute: typeof UserModelsRoute
   UsersRoute: typeof UsersRoute
@@ -181,6 +194,13 @@ declare module '@tanstack/react-router' {
       path: '/user-keys'
       fullPath: '/user-keys'
       preLoaderRoute: typeof UserKeysRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/usage-stats': {
+      id: '/usage-stats'
+      path: '/usage-stats'
+      fullPath: '/usage-stats'
+      preLoaderRoute: typeof UsageStatsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -242,6 +262,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProvidersRoute: ProvidersRoute,
   RequestLogsRoute: RequestLogsRoute,
   SettingsRoute: SettingsRoute,
+  UsageStatsRoute: UsageStatsRoute,
   UserKeysRoute: UserKeysRoute,
   UserModelsRoute: UserModelsRoute,
   UsersRoute: UsersRoute,

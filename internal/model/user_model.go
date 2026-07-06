@@ -12,5 +12,6 @@ type UserModelRouter struct {
 	RouterID        uint `json:"routerId" gorm:"primaryKey;autoIncrement"`
 	UserModelID     uint `json:"userModelId"`
 	ProviderModelID uint `json:"providerModelId"`
+	IsActive        bool `json:"isActive"`
 	Priority        uint `json:"priority"`
 }

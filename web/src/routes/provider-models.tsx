@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Page, type PageInformation } from '@/components/full-page';
+import { Page, type PageInformation, type FormType } from '@/components/full-page';
 import { Descriptions } from '@/components/descriptions';
 import { FormFieldInput, FormFieldSelect, FormFieldSwitch, FormFieldTextarea } from '@/components/form';
 import { Badge } from '@/components/ui/badge';
@@ -106,19 +106,22 @@ function ProviderModelsPage() {
     },
   ];
 
-  const formInitialValue = (_type: string, entity?: ProviderModel) => ({
-    modelId: entity?.modelId ?? 0,
+  const formInitialValue = (formType: FormType, entity?: ProviderModel) => (formType == 'add' ? {
+    modelId: 0,
+    providerId: '0' as any,
+    name: '',
+    displayName: '',
+    description: '',
+    maxContextTokens: 0,
+    maxOutputTokens: 0,
+    inputPrice: 0,
+    outputPrice: 0,
+    tpm: 0,
+    qpm: 0,
+    isActive: true,
+  } : {
+    ...entity!,
     providerId: String(entity?.providerId ?? 0) as any,
-    name: entity?.name ?? '',
-    displayName: entity?.displayName ?? '',
-    description: entity?.description ?? '',
-    maxContextTokens: entity?.maxContextTokens ?? 0,
-    maxOutputTokens: entity?.maxOutputTokens ?? 0,
-    inputPrice: entity?.inputPrice ?? 0,
-    outputPrice: entity?.outputPrice ?? 0,
-    tpm: entity?.tpm ?? 0,
-    qpm: entity?.qpm ?? 0,
-    isActive: entity?.isActive ?? true,
   });
 
   return (

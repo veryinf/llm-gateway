@@ -149,8 +149,9 @@ func (a *Adapter) ChatCompletion(ctx context.Context, req *LLMRequest) (*LLMResp
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return nil, handleHTTPError(resp, "openai")
+		return nil, fmt.Errorf("%s api error: status=%d body=%s", "openai", resp.StatusCode, string(body))
 	}
 
 	return NewLLMResponse(resp, model.APITypeOpenAI)
@@ -191,7 +192,9 @@ func (a *Adapter) ChatCompletionStream(ctx context.Context, req *LLMRequest) (<-
 		}(resp.Body)
 
 		if resp.StatusCode != http.StatusOK {
-			errCh <- handleHTTPError(resp, "openai")
+			body, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			errCh <- fmt.Errorf("%s api error: status=%d body=%s", "openai", resp.StatusCode, string(body))
 			return
 		}
 
@@ -227,7 +230,8 @@ func (a *Adapter) ListModels(ctx context.Context) ([]ModelInfo, error) {
 	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleHTTPError(resp, "openai")
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("%s api error: status=%d body=%s", "openai", resp.StatusCode, string(body))
 	}
 
 	var result struct {
@@ -263,8 +267,9 @@ func (a *Adapter) Message(ctx context.Context, req *LLMRequest) (*LLMResponse, e
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return nil, handleHTTPError(resp, "anthropic")
+		return nil, fmt.Errorf("%s api error: status=%d body=%s", "anthropic", resp.StatusCode, string(body))
 	}
 
 	return NewLLMResponse(resp, model.APITypeAnthropic)
@@ -305,7 +310,9 @@ func (a *Adapter) MessageStream(ctx context.Context, req *LLMRequest) (<-chan *L
 		}(resp.Body)
 
 		if resp.StatusCode != http.StatusOK {
-			errCh <- handleHTTPError(resp, "anthropic")
+			body, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			errCh <- fmt.Errorf("%s api error: status=%d body=%s", "anthropic", resp.StatusCode, string(body))
 			return
 		}
 
@@ -346,6 +353,7 @@ func (a *Adapter) newAnthropicRequest(ctx context.Context, endpoint string, body
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", a.Provider.APIKey)
+	req.Header.Set("Authorization", "Bearer "+a.Provider.APIKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
 	return req, nil
 }

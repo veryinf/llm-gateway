@@ -103,6 +103,8 @@ func InitHttpServer(db *gorm.DB, store *database.Store, cfg *core.Config) (*echo
 	(&handlers.ProviderHandler{BaseHandler: base}).RegisterRoutes(bizApi)
 	(&handlers.ProviderModelHandler{BaseHandler: base}).RegisterRoutes(bizApi)
 	(&handlers.RequestLogHandler{BaseHandler: base}).RegisterRoutes(bizApi)
+	statsQuerySvc := service.NewStatsQueryService(store)
+	(&handlers.StatsQueryHandler{BaseHandler: base, Service: statsQuerySvc}).RegisterRoutes(bizApi)
 	// Health check
 	(&handlers.HealthHandler{BaseHandler: base}).RegisterRoutes(bizApi)
 

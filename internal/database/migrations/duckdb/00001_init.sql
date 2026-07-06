@@ -2,13 +2,13 @@ CREATE TABLE IF NOT EXISTS request_logs (
     trace_id          VARCHAR PRIMARY KEY,
     user_id           BIGINT,
     api_key_id        BIGINT,
-    user_model        VARCHAR DEFAULT '',
-    provider_model    VARCHAR DEFAULT '',
-    response_model    VARCHAR DEFAULT '',
-    user_api_type     VARCHAR DEFAULT '',
-    provider_api_type VARCHAR DEFAULT '',
-    passthrough_level VARCHAR DEFAULT 'none',
-    summary           VARCHAR DEFAULT '',
+    user_model        VARCHAR NOT NULL DEFAULT '',
+    provider_model    VARCHAR NOT NULL DEFAULT '',
+    response_model    VARCHAR NOT NULL DEFAULT '',
+    user_api_type     VARCHAR NOT NULL DEFAULT '',
+    provider_api_type VARCHAR NOT NULL DEFAULT '',
+    passthrough_level VARCHAR NOT NULL DEFAULT 'none',
+    summary           VARCHAR NOT NULL DEFAULT '',
     is_stream         BOOLEAN,
     prompt_tokens     INTEGER,
     completion_tokens INTEGER,
@@ -17,27 +17,27 @@ CREATE TABLE IF NOT EXISTS request_logs (
     cached_tokens     INTEGER DEFAULT 0,
     is_detail         BOOLEAN DEFAULT FALSE,
     status_code       INTEGER,
-    error_message     VARCHAR,
+    error_message     VARCHAR NOT NULL DEFAULT '',
     duration          BIGINT,
-    ip_address        VARCHAR DEFAULT '',
-    user_agent        VARCHAR DEFAULT '',
+    ip_address        VARCHAR NOT NULL DEFAULT '',
+    user_agent        VARCHAR NOT NULL DEFAULT '',
     created_at        TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS request_details (
     trace_id      VARCHAR PRIMARY KEY,
-    request       VARCHAR DEFAULT '',
-    request_raw   VARCHAR DEFAULT '',
-    response      VARCHAR DEFAULT '',
-    response_raw  VARCHAR DEFAULT '',
-    reasoning     VARCHAR DEFAULT ''
+    request       VARCHAR NOT NULL DEFAULT '',
+    request_raw   VARCHAR NOT NULL DEFAULT '',
+    response      VARCHAR NOT NULL DEFAULT '',
+    response_raw  VARCHAR NOT NULL DEFAULT '',
+    reasoning     VARCHAR NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS request_chunks (
     chunk_id    BIGINT,
-    trace_id    VARCHAR,
+    trace_id    VARCHAR NOT NULL DEFAULT '',
     index       INTEGER,
-    type        VARCHAR DEFAULT 'message',
-    data        VARCHAR,
+    type        VARCHAR NOT NULL DEFAULT 'message',
+    data        VARCHAR NOT NULL DEFAULT '',
     created_at  TIMESTAMP
 );

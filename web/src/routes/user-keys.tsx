@@ -37,18 +37,18 @@ function AppKeysPage() {
     {
       accessorKey: 'title',
       header: '名称',
-      meta: { label: '名称', viewDetail: true, className: 'w-[140px]' },
+      meta: { label: '名称', viewDetail: true, className: 'w-40' },
     },
     {
       accessorKey: 'uid',
       header: '用户',
       enableColumnFilter: true,
-      meta: { label: '用户', className: 'w-[100px]', emuns: allUserOptions },
+      meta: { label: '用户', className: 'w-40', emuns: allUserOptions },
     },
     {
       accessorKey: 'key',
       header: 'Key',
-      meta: { label: 'Key', className: 'w-[300px]' },
+      meta: { label: 'Key', className: '' },
       cell: ({ row }) => (
         <div className="flex items-center gap-1">
           <span className="font-mono text-xs break-all">{row.original.key}</span>
@@ -76,12 +76,15 @@ function AppKeysPage() {
       service={userKeyService}
       options={{ showSelectColumn: false }}
       optionColumn={(column, domRender) => ({ ...column, cell: (res) => domRender(res.row.original) })}
-      formInitialValue={(_type, entity) => ({
-        keyId: entity?.keyId ?? 0,
+      formInitialValue={(formType, entity) => (formType == 'add' ? {
+        keyId: 0,
+        uid: '' as any,
+        key: '',
+        title: '',
+        isActive: true,
+      } : {
+        ...entity!,
         uid: (entity?.uid ? String(entity.uid) : '') as any,
-        key: entity?.key ?? '',
-        title: entity?.title ?? '',
-        isActive: entity?.isActive ?? true,
       })}
       renderViewDetail={(entity) =>
         <Descriptions

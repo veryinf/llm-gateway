@@ -112,16 +112,18 @@ function UsersPage() {
       options={{ showSelectColumn: false }}
       optionColumn={(column, domRender) => ({ ...column, cell: (res) => domRender(res.row.original) })}
       renderViewDetail={(entity) => <UserDetail entity={entity} />}
-      formInitialValue={(_type, entity) => ({
-        uid: entity?.uid ?? 0,
-        username: entity?.username ?? '',
+      formInitialValue={(formType, entity) => (formType == 'add' ? {
+        uid: 0,
+        username: '',
         password: '',
-        name: entity?.name ?? '',
-        phone: entity?.phone ?? '',
-        department: entity?.department ?? '',
-        role: entity?.role ?? 'user',
-        status: entity?.status ?? 'active',
-        userKeyCount: entity?.userKeyCount ?? 0,
+        name: '',
+        phone: '',
+        department: '',
+        role: 'user',
+        status: 'active',
+      } : {
+        ...entity!,
+        password: '',
       })}
       renderViewForm={(form, _entity) => (
         <div className="grid grid-cols-12 gap-4">

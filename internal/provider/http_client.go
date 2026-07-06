@@ -3,7 +3,6 @@ package provider
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -19,7 +18,7 @@ func defaultTransport() *http.Transport {
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
 		TLSHandshakeTimeout:   10 * time.Second,
-		ResponseHeaderTimeout: 30 * time.Second,
+		ResponseHeaderTimeout: 300 * time.Second,
 		MaxIdleConns:          100,
 		MaxIdleConnsPerHost:   20,
 		IdleConnTimeout:       90 * time.Second,
@@ -86,10 +85,4 @@ func ReadSSE(ctx context.Context, r io.Reader) <-chan SSEEvent {
 		}
 	}()
 	return ch
-}
-
-// handleHTTPError 处理非 200 状态码的响应，返回格式化错误
-func handleHTTPError(resp *http.Response, prefix string) error {
-	body, _ := io.ReadAll(resp.Body)
-	return fmt.Errorf("%s api error: status=%d body=%s", prefix, resp.StatusCode, string(body))
 }

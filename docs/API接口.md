@@ -1183,16 +1183,16 @@ GET /api/stats/requests
 
 **查询参数**：`start`、`end`、`user_id`（可选）、`model`（可选）
 
-**返回**：按天聚合的请求量
+**返回**：按小时聚合的请求量（`date` 格式 `YYYY-MM-DD HH:00`）
 
 ```json
 [
   {
-    "date": "2026-06-10",
-    "request_count": 150,
-    "success_count": 145,
-    "error_count": 5,
-    "avg_latency_ms": 1200
+    "date": "2026-06-10 14:00",
+    "requestCount": 18,
+    "successCount": 17,
+    "errorCount": 1,
+    "avgLatencyMs": 1200
   }
 ]
 ```
@@ -1247,6 +1247,86 @@ GET /api/stats/behavior
 ]
 ```
 
+### 3.10.4.1 用户维度分页统计
+
+```
+GET /api/stats/users
+```
+
+**认证**：JWT / AKSK
+
+**查询参数**：
+- `start`、`end`（可选，缺省近 7 天）
+- `keyword`（可选，模糊匹配 `users.username` 或 `users.department`）
+- `page`（可选，默认 1）
+- `size`（可选，默认 20，上限 200）
+- `sort`（可选，默认 `totalTokens`，白名单：`requestCount` / `promptTokens` / `completionTokens` / `reasoningTokens` / `totalTokens` / `modelCount` / `lastCallAt` / `username` / `department`）
+- `order`（可选，`asc` / `desc`，默认 `desc`）
+
+**返回**：分页列表
+
+```json
+{
+  "errCode": 0,
+  "errMsg": "ok",
+  "dataSet": [
+    {
+      "userId": 2,
+      "username": "zhangsan",
+      "department": "engineering",
+      "requestCount": 320,
+      "promptTokens": 80000,
+      "completionTokens": 40000,
+      "reasoningTokens": 0,
+      "totalTokens": 120000,
+      "modelCount": 5,
+      "lastCallAt": "2026-07-03 14:23:11"
+    }
+  ],
+  "total": 25,
+  "hasMore": true
+}
+```
+
+### 3.10.4.2 服务商模型维度分页统计
+
+```
+GET /api/stats/provider-models
+```
+
+**认证**：JWT / AKSK
+
+**查询参数**：
+- `start`、`end`（同上）
+- `keyword`（可选，模糊匹配 `provider_model`）
+- `page`、`size`（同上）
+- `sort`（可选，默认 `totalTokens`，白名单：`requestCount` / `promptTokens` / `completionTokens` / `totalTokens` / `userCount` / `avgLatencyMs` / `providerTitle` / `providerModel`）
+- `order`（同上）
+
+**返回**：分页列表
+
+```json
+{
+  "errCode": 0,
+  "errMsg": "ok",
+  "dataSet": [
+    {
+      "providerId": 1,
+      "providerTitle": "OpenAI",
+      "providerModel": "gpt-4o",
+      "requestCount": 800,
+      "promptTokens": 200000,
+      "completionTokens": 100000,
+      "totalTokens": 300000,
+      "userCount": 18,
+      "avgLatencyMs": 1200.5
+    }
+  ],
+  "total": 8,
+  "hasMore": false
+}
+```
+
 ---
 
 ### 3.10.5 Dashboard 总览
@@ -1263,18 +1343,44 @@ GET /api/dashboard/overview
 
 ```json
 {
-  "total_requests": 1500,
-  "total_tokens": 500000,
-  "total_cost": 125.00,
-  "avg_latency_ms": 1100,
-  "success_rate": 97.5,
-  "active_users": 25,
-  "top_models": [
-    {"model_name": "gpt-4o", "count": 800},
-    {"model_name": "claude-3", "count": 400}
+  "totalRequests": 1500,
+  "totalTokens": 500000,
+  "totalCost": 0,
+  "avgLatencyMs": 1100,
+  "successRate": 97.5,
+  "activeUsers": 25,
+  "topModels": [
+    {"userModel": "gpt-4o", "providerModel": "gpt-4o", "count": 800},
+    {"userModel": "claude-3", "providerModel": "claude-3.5-sonnet", "count": 400}
+  ],
+  "topProviders": [
+    {
+      "providerId": 1,
+      "providerTitle": "OpenAI",
+      "providerModel": "gpt-4o",
+      "requestCount": 800,
+      "promptTokens": 200000,
+      "completionTokens": 100000,
+      "totalTokens": 300000,
+      "userCount": 18
+    }
+  ],
+  "topUsers": [
+    {
+      "userId": 2,
+      "username": "zhangsan",
+      "department": "engineering",
+      "requestCount": 320,
+      "promptTokens": 80000,
+      "completionTokens": 40000,
+      "totalTokens": 120000,
+      "modelCount": 5
+    }
   ]
 }
 ```
+
+> 注：本期不计算费用，`totalCost` 始终为 `0`；`topModels` 按 `(userModel, providerModel)` 聚合；`topProviders` 按 `providerModel` 聚合并附带 `providerTitle`；`topUsers` 按 `userId` 聚合并附带 `username` / `department`。三者均 `LIMIT 10`。
 
 ---
 

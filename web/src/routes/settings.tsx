@@ -101,37 +101,6 @@ function SettingsPage() {
         }}
       >
         <FieldGroup className="gap-4 max-w-2xl">
-          {/* 请求配置 */}
-          <div className="rounded-lg border bg-card p-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <FormFieldSwitch
-                form={form}
-                name="requestDetail"
-                title="请求详情记录"
-                description="记录完整的请求/响应 body 数据"
-                switchLabel="启用"
-              />
-              <FormFieldInput
-                form={form}
-                name="requestRetentionDays"
-                title="请求日志保留天数"
-                type="number"
-                description="超过此天数的请求日志和流式 chunks 将被自动清理，默认 7 天"
-              />
-            </div>
-          </div>
-
-          {/* 日志文件配置 */}
-          <div className="rounded-lg border bg-card p-4">
-            <FormFieldInput
-              form={form}
-              name="logRetention"
-              title="日志文件保留天数"
-              type="number"
-              description="超过此天数的日志文件将被自动清理，默认 7 天"
-            />
-          </div>
-
           {/* 路由配置 */}
           <div className="rounded-lg border bg-card p-4">
             <FormFieldSelect
@@ -141,6 +110,37 @@ function SettingsPage() {
               options={passthroughOptions}
               description={<>用户级：跳过 UserModel 直接匹配 ProviderModel<br />提供商级：跳过 ProviderModel 直接使用默认 Provider</>}
             />
+          </div>
+
+          {/* 运行日志文件配置 */}
+          <div className="rounded-lg border bg-card p-4">
+            <FormFieldInput
+              form={form}
+              name="logRetention"
+              title="运行日志文件保留天数"
+              type="number"
+              description="超过此天数的运行日志文件将被自动清理"
+            />
+          </div>
+
+          {/* 请求配置 */}
+          <div className="rounded-lg border bg-card p-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <FormFieldSwitch
+                form={form}
+                name="requestDetail"
+                title="请求详情记录"
+                description="记录完整的请求/响应 body 数据, 开启后会耗费大量磁盘空间"
+                switchLabel="启用"
+              />
+              <FormFieldInput
+                form={form}
+                name="requestRetentionDays"
+                title="请求日志保留天数"
+                type="number"
+                description="超过此天数的请求日志和流式 chunks 将被自动清理。统计数据将不受影响的固定保留180天"
+              />
+            </div>
           </div>
 
           {/* 保存按钮 */}

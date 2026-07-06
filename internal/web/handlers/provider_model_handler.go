@@ -179,8 +179,9 @@ func (h *ProviderModelHandler) RemoveProviderModel(c echo.Context) error {
 		return h.Error(-11, err.Error())
 	}
 
-	// 级联删除：先删关联的下游模型引用
+	// 级联删除：先删关联的下游模型引用与路由
 	h.DB.Where("upstream_model_id = ?", input.ModelID).Delete(&model.UserModel{})
+	h.DB.Where("provider_model_id = ?", input.ModelID).Delete(&model.UserModelRouter{})
 
 	if err := h.DB.Delete(&model.ProviderModel{}, input.ModelID).Error; err != nil {
 		return h.Error(-23, err.Error())

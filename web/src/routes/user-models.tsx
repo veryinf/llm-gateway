@@ -1,10 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from '@tanstack/react-form';
 import { z } from 'zod';
-import { Page, type PageInformation } from '@/components/full-page';
+import { Page, type PageInformation, type FormType } from '@/components/full-page';
 import { Descriptions } from '@/components/descriptions';
 import { FormFieldInput, FormFieldSelect, FormFieldSwitch, FormFieldTextarea } from '@/components/form';
 import { Badge } from '@/components/ui/badge';
@@ -14,16 +14,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Loading } from '@/components/loader';
 import { useModal } from '@/components/modal';
 import { useConfirm } from '@/components/confirm';
-import { Plus, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { UI } from '@/lib';
 import { userModelService, type UserModel } from '@/services/user-model';
-import { userModelRouterService } from '@/services/user-model-router';
+import { userModelRouterService, type UserModelRouter } from '@/services/user-model-router';
 import { providerModelService, type ProviderModel } from '@/services/provider-model';
+import { useAllProviders } from '@/services/provider';
 import { useBreadcrumb } from '@/hooks/use-breadcrumb';
 
 const addRouterSchema = z.object({
   providerModelId: z.string().min(1, '请选择上游模型'),
   priority: z.number({ message: '必填项' }).int('必须是整数').min(0, '不能为负数'),
+});
+
+const editRouterSchema = z.object({
+  providerModelId: z.string().min(1, '请选择上游模型'),
+  priority: z.number({ message: '必填项' }).int('必须是整数').min(0, '不能为负数'),
+  isActive: z.boolean(),
 });
 
 export const Route = createFileRoute('/user-models')({
@@ -74,12 +81,14 @@ function UserModelsPage() {
     setBreadcrumbs(pageInformation.breadcrumbs ?? []);
   }, []);
 
-  const formInitialValue = (_type: string, entity?: UserModel) => ({
-    userModelId: entity?.userModelId ?? 0,
-    name: entity?.name ?? '',
-    displayName: entity?.displayName ?? '',
-    description: entity?.description ?? '',
-    isActive: entity?.isActive ?? true,
+  const formInitialValue = (formType: FormType, entity?: UserModel) => (formType == 'add' ? {
+    userModelId: 0,
+    name: '',
+    displayName: '',
+    description: '',
+    isActive: true,
+  } : {
+    ...entity!,
   });
 
   return (
@@ -107,6 +116,7 @@ function UserModelDetail({ entity }: { entity: UserModel; }) {
   const queryClient = useQueryClient();
   const { Modal, modalHandler } = useModal();
   const { Confirm, confirmHandler } = useConfirm();
+  const [editingRouter, setEditingRouter] = useState<UserModelRouter | null>(null);
 
   const { data: routers = [], isLoading: routersLoading } = useQuery({
     queryKey: ['user-model-routers', entity.userModelId],
@@ -127,14 +137,20 @@ function UserModelDetail({ entity }: { entity: UserModel; }) {
   const providerModelMap = new Map<number, ProviderModel>();
   (providerModelsData?.dataSet ?? []).forEach((m) => providerModelMap.set(m.modelId, m));
 
+  const { allProviders } = useAllProviders();
+  const providerMap = useMemo(
+    () => new Map(allProviders.map((p) => [p.providerId, p])),
+    [allProviders],
+  );
+
   const providerModelOptions = useMemo(
     () => (providerModelsData?.dataSet ?? []).map((m) => ({
       label: m.displayName
-        ? `${m.displayName} (${m.provider?.title ?? '-'})`
-        : `${m.name} (${m.provider?.title ?? '-'})`,
+        ? `${m.displayName} (${providerMap.get(m.providerId)?.title ?? '-'})`
+        : `${m.name} (${providerMap.get(m.providerId)?.title ?? '-'})`,
       value: m.modelId,
     })),
-    [providerModelsData],
+    [providerModelsData, providerMap],
   );
 
   const defaultPriority = useMemo(() => {
@@ -144,6 +160,14 @@ function UserModelDetail({ entity }: { entity: UserModel; }) {
 
   const deleteMutation = useMutation({
     mutationFn: (routerId: number) => userModelRouterService.delete(routerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user-model-routers', entity.userModelId] });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (params: { routerId: number; values: { providerModelId: number; priority: number; isActive: boolean; }; }) =>
+      userModelRouterService.update(params.routerId, params.values),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['user-model-routers', entity.userModelId] });
     },
@@ -179,6 +203,7 @@ function UserModelDetail({ entity }: { entity: UserModel; }) {
           userModelId: entity.userModelId,
           providerModelId: Number(value.providerModelId),
           priority: value.priority,
+          isActive: true,
         }),
         '新增路由成功',
       );
@@ -194,6 +219,7 @@ function UserModelDetail({ entity }: { entity: UserModel; }) {
       providerModelId: '',
       priority: defaultPriority,
     });
+    setEditingRouter(null);
     modalHandler.show({
       title: '新增路由规则',
       description: `为「${entity.displayName || entity.name}」配置新的上游路由`,
@@ -209,6 +235,62 @@ function UserModelDetail({ entity }: { entity: UserModel; }) {
               </Button>
             )}
           </addForm.Subscribe>
+        </>
+      ),
+    });
+  };
+
+  const editForm = useForm({
+    defaultValues: {
+      providerModelId: '',
+      priority: 0,
+      isActive: true,
+    },
+    validators: {
+      onChange: editRouterSchema,
+    },
+    onSubmit: async ({ value }) => {
+      if (!editingRouter) return;
+      const ok = await UI.tips(
+        updateMutation.mutateAsync({
+          routerId: editingRouter.routerId,
+          values: {
+            providerModelId: Number(value.providerModelId),
+            priority: value.priority,
+            isActive: value.isActive,
+          },
+        }),
+        '保存成功',
+      );
+      if (ok) {
+        modalHandler.close();
+        setEditingRouter(null);
+      }
+    },
+  });
+
+  const handleOpenEdit = (router: UserModelRouter) => {
+    setEditingRouter(router);
+    editForm.reset({
+      providerModelId: String(router.providerModelId),
+      priority: router.priority,
+      isActive: router.isActive,
+    });
+    modalHandler.show({
+      title: '编辑路由规则',
+      description: `为「${entity.displayName || entity.name}」调整上游路由`,
+      actions: (
+        <>
+          <Button className="h-8 px-6" variant="secondary" onClick={() => modalHandler.close()}>
+            取消
+          </Button>
+          <editForm.Subscribe>
+            {(state) => (
+              <Button className="h-8 px-6" onClick={() => editForm.handleSubmit()} disabled={state.isSubmitting}>
+                {state.isSubmitting ? '提交中...' : '确认'}
+              </Button>
+            )}
+          </editForm.Subscribe>
         </>
       ),
     });
@@ -246,35 +328,51 @@ function UserModelDetail({ entity }: { entity: UserModel; }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>优先级</TableHead>
+                  <TableHead className="w-[80px]">优先级</TableHead>
                   <TableHead>上游模型</TableHead>
                   <TableHead>服务商</TableHead>
-                  <TableHead className="w-20" />
+                  <TableHead className="w-[80px]">状态</TableHead>
+                  <TableHead className="w-28" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {routers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-muted-foreground text-center">
+                    <TableCell colSpan={5} className="text-muted-foreground text-center">
                       暂无路由规则
                     </TableCell>
                   </TableRow>
                 ) : (
                   routers.map((r) => {
                     const pm = providerModelMap.get(r.providerModelId);
+                    const providerTitle = pm ? providerMap.get(pm.providerId)?.title ?? '-' : '-';
                     return (
                       <TableRow key={r.routerId}>
                         <TableCell>{r.priority}</TableCell>
                         <TableCell className="font-mono text-xs">{pm?.displayName || pm?.name || `#${r.providerModelId}`}</TableCell>
-                        <TableCell>{pm?.provider?.title ?? '-'}</TableCell>
+                        <TableCell>{providerTitle}</TableCell>
                         <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDelete(r.routerId)}
-                          >
-                            <Trash2 className="size-4 text-destructive" />
-                          </Button>
+                          <Badge variant={r.isActive ? 'default' : 'destructive'}>
+                            {r.isActive ? '启用' : '禁用'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleOpenEdit(r)}
+                            >
+                              <Pencil className="size-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDelete(r.routerId)}
+                            >
+                              <Trash2 className="size-4 text-destructive" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -287,26 +385,56 @@ function UserModelDetail({ entity }: { entity: UserModel; }) {
       </Card>
 
       <Modal type="dialog">
-        <div className="grid grid-cols-12 gap-4">
-          <FormFieldSelect
-            className="col-span-12"
-            form={addForm}
-            name="providerModelId"
-            title="上游模型"
-            required
-            placeholder="选择 ProviderModel"
-            options={providerModelOptions}
-          />
-          <FormFieldInput
-            className="col-span-12"
-            form={addForm}
-            name="priority"
-            title="优先级"
-            type="number"
-            required
-            description="数值越小越靠前"
-          />
-        </div>
+        {editingRouter ? (
+          <div className="grid grid-cols-12 gap-4">
+            <FormFieldSelect
+              className="col-span-12"
+              form={editForm}
+              name="providerModelId"
+              title="上游模型"
+              required
+              placeholder="选择 ProviderModel"
+              options={providerModelOptions}
+            />
+            <FormFieldInput
+              className="col-span-12"
+              form={editForm}
+              name="priority"
+              title="优先级"
+              type="number"
+              required
+              description="数值越小越靠前"
+            />
+            <FormFieldSwitch
+              className="col-span-12"
+              form={editForm}
+              name="isActive"
+              title="启用"
+              switchLabel="启用此路由规则"
+            />
+          </div>
+        ) : (
+          <div className="grid grid-cols-12 gap-4">
+            <FormFieldSelect
+              className="col-span-12"
+              form={addForm}
+              name="providerModelId"
+              title="上游模型"
+              required
+              placeholder="选择 ProviderModel"
+              options={providerModelOptions}
+            />
+            <FormFieldInput
+              className="col-span-12"
+              form={addForm}
+              name="priority"
+              title="优先级"
+              type="number"
+              required
+              description="数值越小越靠前"
+            />
+          </div>
+        )}
       </Modal>
 
       <Confirm />

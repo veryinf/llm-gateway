@@ -136,6 +136,8 @@ func (h *UserModelHandler) RemoveUserModel(c echo.Context) error {
 		return h.Error(-11, err.Error())
 	}
 
+	h.DB.Where("user_model_id = ?", input.UserModelID).Delete(&model.UserModelRouter{})
+
 	if err := h.DB.Delete(&model.UserModel{}, input.UserModelID).Error; err != nil {
 		return h.Error(-23, err.Error())
 	}

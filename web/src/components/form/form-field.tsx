@@ -135,6 +135,7 @@ export function FormFieldCheckboxGroup<T extends any = any>(props: FormFieldProp
 }
 
 export function FormFieldSelect<T extends any = any>(props: FormFieldProps<T> & { options: OptionsItem[] | GroupOptionsItem[]; onCreate?: () => void; onRefresh?: () => void; }) {
+  console.log(props.options);
   return (
     <FormField
       {...omit(props, ['options', 'onCreate', 'onRefresh', 'titleMore'])}
@@ -170,9 +171,9 @@ export function FormFieldSelect<T extends any = any>(props: FormFieldProps<T> & 
                   <SelectGroup>
                     <SelectLabel>{group.label}</SelectLabel>
                     {group.options.map((option: OptionsItem) => (
-                      <ComboboxItem key={option.value} value={option.value}>
+                      <SelectItem key={option.value} value={String(option.value)}>
                         {option.label}
-                      </ComboboxItem>
+                      </SelectItem>
                     ))}
                   </SelectGroup>
                 ))

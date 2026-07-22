@@ -199,9 +199,6 @@ func (a *Adapter) ChatCompletionStream(ctx context.Context, req *LLMRequest) (<-
 		}
 
 		for event := range ReadSSE(ctx, resp.Body) {
-			if event.Data == "[DONE]" {
-				break
-			}
 			chunkCh <- NewLLMResponseChunk([]byte(event.Data), model.APITypeOpenAI)
 		}
 	}()

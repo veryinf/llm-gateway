@@ -23,10 +23,8 @@ export function useModal<T = any>(initMeta?: T) {
   const [override, setOverride] = useState<Partial<InnerModalProps>>();
   const [meta, setMeta] = useState<T | undefined>(initMeta);
   const debugId = useRef(`mr-${Math.random().toString(36).slice(2, 6)}`).current;
-  console.log('[modal-debug] useModal init', debugId);
 
   const Modal = useCallback((props: ModalProps) => {
-    console.log('[modal-debug] Modal render', debugId, 'visible=', visible);
     const Comp = props.type === 'dialog' ? ModalDialog : ModalDrawer;
     return <Comp {...props} {...override} open={visible} onOpenChange={setVisible} />;
   }, [override, visible]);
@@ -34,7 +32,6 @@ export function useModal<T = any>(initMeta?: T) {
   const modalHandler = useMemo(
     () => ({
       open: (title: string, description?: string, meta?: T) => {
-        console.log('[modal-debug] modalHandler.open', debugId, '→ setVisible(true)');
         setOverride((prev) => ({ ...(prev ?? {}), title, description }));
         setMeta(meta);
         setVisible(true);
@@ -45,7 +42,6 @@ export function useModal<T = any>(initMeta?: T) {
         setVisible(true);
       },
       close: () => {
-        console.log('[modal-debug] modalHandler.close', debugId, '→ setVisible(false)');
         setVisible(false);
       },
     }),
@@ -79,9 +75,10 @@ function ModalDrawer(props: InnerModalProps) {
 }
 
 function ModalDialog(props: InnerModalProps) {
+  const { showCloseButton = true } = props;
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className={props.className}>
+      <DialogContent className={props.className} showCloseButton={showCloseButton}>
         {props.title || props.description ? (
           <DialogHeader>
             <DialogTitle>

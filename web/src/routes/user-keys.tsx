@@ -1,9 +1,9 @@
-import { createFileRoute } from '@tanstack/react-router';
+﻿import { createFileRoute } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Page, type PageInformation } from '@/components/full-page';
 import { Descriptions } from '@/components/descriptions';
-import { FormFieldInput, FormFieldSelect } from '@/components/form';
+import { FormFieldInput, FormFieldSelect, FormFieldSwitch } from '@/components/form';
 import { Badge } from '@/components/ui/badge';
 import { useBreadcrumb } from '@/hooks/use-breadcrumb';
 import { userKeyService, type UserKey } from '@/services/api-key';
@@ -110,6 +110,7 @@ function AppKeysPage() {
         <div className="grid grid-cols-12 gap-4">
           <FormFieldSelect className="col-span-6" form={form} name="uid" title="用户" required options={allUserOptions} placeholder="请选择用户" />
           <FormFieldInput className="col-span-6" form={form} name="title" title="名称" required placeholder="例如: production-key" />
+          <FormFieldSwitch className="col-span-12" form={form} name="isActive" title="启用" switchLabel="启用此 API Key" />
         </div>
       )}
     />

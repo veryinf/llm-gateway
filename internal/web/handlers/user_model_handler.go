@@ -12,6 +12,11 @@ type UserModelHandler struct {
 	common.BaseHandler
 }
 
+type userModelWithProvider struct {
+	model.UserModel
+	ActiveProviderModel *model.ProviderModel `json:"activeProviderModel,omitempty"`
+}
+
 func (h *UserModelHandler) SearchUserModels(c echo.Context) error {
 	input := &common.SearchParams{}
 	if err := c.Bind(input); err != nil {
@@ -39,7 +44,57 @@ func (h *UserModelHandler) SearchUserModels(c echo.Context) error {
 		return err
 	}
 
-	return common.NewDataSet(models, count)
+	// 批量查询每个 UserModel 优先级最高的已启用路由规则
+	routerMap := h.buildActiveRouterMap()
+	providerMap := h.buildProviderMap(routerMap)
+
+	result := make([]userModelWithProvider, len(models))
+	for i, m := range models {
+		result[i] = userModelWithProvider{UserModel: m}
+		if r, ok := routerMap[m.UserModelID]; ok {
+			if pm, ok2 := providerMap[r.ProviderModelID]; ok2 {
+				result[i].ActiveProviderModel = &pm
+			}
+		}
+	}
+
+	return common.NewDataSet(result, count)
+}
+
+// buildActiveRouterMap 返回每个 UserModelID 对应的优先级最高的已启用路由规则
+func (h *UserModelHandler) buildActiveRouterMap() map[uint]model.UserModelRouter {
+	var routers []model.UserModelRouter
+	// 使用 IS NOT 0 兼容 NULL 值（NULL 视为启用）
+	h.DB.Where("is_active IS NOT 0").Order("user_model_id ASC, priority ASC").Scan(&routers)
+
+	routerMap := make(map[uint]model.UserModelRouter, len(routers))
+	for _, r := range routers {
+		if _, exists := routerMap[r.UserModelID]; !exists {
+			routerMap[r.UserModelID] = r
+		}
+	}
+	return routerMap
+}
+
+// buildProviderMap 根据路由规则收集 ProviderModelID，批量查询后返回 map
+func (h *UserModelHandler) buildProviderMap(routerMap map[uint]model.UserModelRouter) map[uint]model.ProviderModel {
+	if len(routerMap) == 0 {
+		return nil
+	}
+
+	ids := make([]uint, 0, len(routerMap))
+	for _, r := range routerMap {
+		ids = append(ids, r.ProviderModelID)
+	}
+
+	var models []model.ProviderModel
+	h.DB.Where("model_id IN ?", ids).Scan(&models)
+
+	pmMap := make(map[uint]model.ProviderModel, len(models))
+	for _, pm := range models {
+		pmMap[pm.ModelID] = pm
+	}
+	return pmMap
 }
 
 func (h *UserModelHandler) FetchUserModel(c echo.Context) error {

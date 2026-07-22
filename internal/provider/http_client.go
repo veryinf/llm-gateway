@@ -58,9 +58,6 @@ func ReadSSE(ctx context.Context, r io.Reader) <-chan SSEEvent {
 			// 空行表示事件结束
 			if line == "" {
 				if event.Data != "" {
-					if event.Data == "[DONE]" {
-						return
-					}
 					ch <- event
 					event = SSEEvent{}
 				}

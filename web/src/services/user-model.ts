@@ -1,5 +1,6 @@
 import { request } from '@/lib';
 import type { API } from '@/typings';
+import type { ProviderModel } from './provider-model';
 
 export interface UserModel {
   userModelId: number;
@@ -7,6 +8,7 @@ export interface UserModel {
   displayName: string;
   description: string;
   isActive: boolean;
+  activeProviderModel?: ProviderModel;
 }
 
 export const userModelService: API.Service<UserModel> = {

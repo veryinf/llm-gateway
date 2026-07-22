@@ -10,11 +10,12 @@ type PopupFormAction<T, F> = {
 };
 
 type PopupFormProps<T, F> = {
+  type?: 'drawer' | 'dialog';
   onSubmit?: (values: T, meta: EasyFormMeta<T, F>, form?: EasyFormApi<T>) => Promise<boolean>;
   children?: React.ReactNode | ((from: EasyFormApi<T>, formData: T | undefined, stateData: F | undefined) => React.ReactNode);
 };
 
-export type DefaultFormState = { action: 'add' | 'edit' };
+export type DefaultFormState = { action: 'add' | 'edit'; };
 export type FormSubmit<T> = EasyFormOptions<T>['onSubmit'];
 
 export function usePopupForm<TFormData, TState>() {
@@ -52,6 +53,7 @@ export function usePopupForm<TFormData, TState>() {
 
     return (
       <Modal
+        type={props.type}
         actions={
           <>
             <Button className="h-8 px-6" variant="secondary" onClick={() => modalHandler.close()}>

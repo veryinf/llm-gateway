@@ -102,16 +102,14 @@ func ProxyMiddleware() echo.MiddlewareFunc {
 		return func(c echo.Context) error {
 			cc := &LeContext{Context: c}
 
-			authorization := c.Request().Header.Get("Authorization")
-			if authorization == "" {
-				return proxyUnauthorized(c)
+			rawKey := c.Request().Header.Get("x-api-key")
+			if rawKey == "" {
+				authorization := c.Request().Header.Get("Authorization")
+				if authorization != "" && strings.HasPrefix(authorization, "Bearer ") {
+					rawKey = strings.TrimPrefix(authorization, "Bearer ")
+				}
 			}
 
-			if !strings.HasPrefix(authorization, "Bearer ") {
-				return proxyUnauthorized(c)
-			}
-
-			rawKey := strings.TrimPrefix(authorization, "Bearer ")
 			if rawKey == "" {
 				return proxyUnauthorized(c)
 			}

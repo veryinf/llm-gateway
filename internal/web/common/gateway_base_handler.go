@@ -88,7 +88,9 @@ func (h *GatewayBase) HandleStream(c echo.Context, llmReq *provider.LLMRequest, 
 	log := h.buildRequestLog(ctx, router, llmReq, nil)
 	chunkCh, errCh := router.Adapter.AutoStream(c.Request().Context(), llmReq)
 
+	var lastChunkType model.ChunkType
 	for chunk := range chunkCh {
+		lastChunkType = chunk.Type
 		if llmReq.APIType == model.APITypeAnthropic {
 			chunk, _ = chunk.ToAnthropic()
 		} else {
@@ -100,6 +102,12 @@ func (h *GatewayBase) HandleStream(c echo.Context, llmReq *provider.LLMRequest, 
 		if chunk.Type == model.ChunkTypeUsage {
 			extractUsageFromChunk(log, chunk)
 		}
+	}
+
+	// 如果 OpenAI 流没有以 [DONE] 结束，补发结束标记
+	if llmReq.APIType == model.APITypeOpenAI && lastChunkType != model.ChunkTypeDone {
+		_, _ = fmt.Fprintf(c.Response().Writer, "data: [DONE]\n\n")
+		flusher.Flush()
 	}
 
 	if err := <-errCh; err != nil {

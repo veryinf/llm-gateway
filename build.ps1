@@ -1,6 +1,6 @@
 # LLM Gateway Build Script
-# Usage: .\build.ps1 <command> [--logfile [path]]
-# Commands: setup, build, build-all, dev, dev-frontend, fmt, vet, help
+# Usage: .\build.ps1 <command> [options]
+# Commands: build, build-all, dev, debug, dev-frontend, package, help
 
 $BinaryName = "lgw.exe"
 $BuildDir = "out"
@@ -10,15 +10,15 @@ $WebDir = "web"
 # Parse $args manually (PowerShell doesn't support -- prefix in param)
 $Command = "help"
 $LogBoth = $false
-$DebugMode = $false
+$PushImage = $false
 $help = $false
 
 $i = 0
 while ($i -lt $args.Count) {
     switch ($args[$i]) {
         '--logfile' { $LogBoth = $true }
-        '--debug' { $DebugMode = $true }
-        '--help' { $help = $true }
+        '--push'    { $PushImage = $true }
+        '--help'    { $help = $true }
         default {
             if ($Command -eq "help") { $Command = $args[$i] }
         }
@@ -56,27 +56,6 @@ $ProdLdFlags = "-s -w $VarFlags"
 $DevLdFlags = $VarFlags
 
 switch ($Command) {
-    "setup" {
-        Write-Step "Installing Go dependencies..."
-        Run "go mod tidy"
-        Write-Step "Installing frontend dependencies..."
-        Push-Location $WebDir
-        try { Run "pnpm install --frozen-lockfile" } finally { Pop-Location }
-        Write-OK "Setup complete"
-    }
-
-    "fmt" {
-        Write-Step "Formatting Go code..."
-        Run "gofmt -w ."
-        Write-OK "Format complete"
-    }
-
-    "vet" {
-        Write-Step "Running go vet..."
-        Run "go vet ./..."
-        if ($LASTEXITCODE -eq 0) { Write-OK "Vet passed" } else { Write-Err "Vet failed"; exit $LASTEXITCODE }
-    }
-
     "build" {
         Write-Step "Building $BinaryName (production, stripped)..."
         New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
@@ -92,24 +71,25 @@ switch ($Command) {
     "dev" {
         $BinaryName = "lgw-dev.exe"
         New-Item -ItemType Directory -Force -Path $DataDir, $BuildDir | Out-Null
+        Write-Step "Building (dev, symbols kept) and starting server..."
+        Run "go build -ldflags=""$DevLdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/"
+        if ($LASTEXITCODE -ne 0) { Write-Err "Build failed"; exit $LASTEXITCODE }
+        Write-OK "Build done, starting..."
+        $startArgs = @()
+        if ($LogBoth) { $startArgs += "--log", "both" }
+        & "$BuildDir/$BinaryName" @startArgs
+    }
 
-        if ($DebugMode) {
-            Write-Step "Building (debug, symbols kept) and starting with Delve..."
-            Run "go build -ldflags=""$DevLdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/"
-            if ($LASTEXITCODE -ne 0) { Write-Err "Build failed"; exit $LASTEXITCODE }
-            Write-OK "Build done, starting dlv..."
-            $startArgs = @("exec", "$BuildDir/$BinaryName", "--headless", "--listen=:2345", "--api-version=2", "--accept-multiclient", "--")
-            if ($LogBoth) { $startArgs += "--log", "both" }
-            & dlv @startArgs
-        } else {
-            Write-Step "Building (dev, symbols kept) and starting server..."
-            Run "go build -ldflags=""$DevLdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/"
-            if ($LASTEXITCODE -ne 0) { Write-Err "Build failed"; exit $LASTEXITCODE }
-            Write-OK "Build done, starting..."
-            $startArgs = @()
-            if ($LogBoth) { $startArgs += "--log", "both" }
-            & "$BuildDir/$BinaryName" @startArgs
-        }
+    "debug" {
+        $BinaryName = "lgw-dev.exe"
+        New-Item -ItemType Directory -Force -Path $DataDir, $BuildDir | Out-Null
+        Write-Step "Building (debug, symbols kept) and starting with Delve..."
+        Run "go build -ldflags=""$DevLdFlags"" -o ""$BuildDir/$BinaryName"" ./cmd/"
+        if ($LASTEXITCODE -ne 0) { Write-Err "Build failed"; exit $LASTEXITCODE }
+        Write-OK "Build done, starting dlv (IDE attach on :2345)..."
+        $startArgs = @("exec", "$BuildDir/$BinaryName", "--headless", "--listen=:2345", "--api-version=2", "--accept-multiclient", "--")
+        if ($LogBoth) { $startArgs += "--log", "both" }
+        & dlv @startArgs
     }
 
     "build-all" {
@@ -135,32 +115,68 @@ switch ($Command) {
         try { pnpm dev } finally { Pop-Location }
     }
 
+    "package" {
+        $Wslc = "C:\Program Files\WSL\wslc.exe"
+        if (!(Test-Path $Wslc)) {
+            Write-Err "wslc not found at $Wslc (WSL container CLI is required for image packaging)"
+            exit 1
+        }
+        $ImageName = "git.chuangyun.work/archive/llm-gateway:latest"
+        $BuildTime = Get-Date -Format "2006-01-02 15:04:05"
+
+        Write-Step "Building image $ImageName via wslc (frontend + Go binary multi-stage)..."
+        $buildArgs = @(
+            "build",
+            "-t", $ImageName,
+            "-f", "Dockerfile",
+            "--build-arg", "VERSION=$BuildVersion",
+            "--build-arg", "BUILD_TIME=$BuildTime",
+            "--build-arg", "BUILD_ENV=production",
+            "."
+        )
+        & $Wslc @buildArgs
+        if ($LASTEXITCODE -ne 0) { Write-Err "wslc build failed"; exit $LASTEXITCODE }
+        Write-OK "Image built: $ImageName"
+
+        if ($PushImage) {
+            Write-Step "Pushing $ImageName to registry..."
+            & $Wslc push $ImageName
+            if ($LASTEXITCODE -ne 0) { Write-Err "wslc push failed"; exit $LASTEXITCODE }
+            Write-OK "Image pushed"
+        } else {
+            Write-Host ""
+            Write-Host "  Tip: pass --push to also upload to the registry" -ForegroundColor DarkGray
+        }
+    }
+
     default {
         Write-Host ""
         Write-Host "LLM Gateway Build Script" -ForegroundColor Cyan
         Write-Host "========================" -ForegroundColor Cyan
         Write-Host ""
-        Write-Host "Usage: .\build.ps1 <command> [--logfile [path]]"
+        Write-Host "Usage: .\build.ps1 <command> [options]"
         Write-Host ""
         Write-Host "Commands:" -ForegroundColor Yellow
-        Write-Host "  setup          Install Go + frontend dependencies"
-        Write-Host "  fmt            Format Go code"
-        Write-Host "  vet            Run go vet"
         Write-Host "  build          Build Go binary -> output/"
-        Write-Host "  build-all      Build frontend + Go binary"
-        Write-Host "  dev            Build and run server"
-        Write-Host "  dev-frontend   Start Vite dev server (http://localhost:5173)"
+        Write-Host "  build-all      Build frontend + Go binary (frontend embedded)"
+        Write-Host "  dev            Build and run server (supports --logfile)"
+        Write-Host "  debug          Build and start with Delve debugger on :2345 (supports --logfile)"
+        Write-Host "  dev-frontend   Start Vite dev server (http://localhost:3000)"
+        Write-Host "  package        Build container image via wslc (supports --push)"
         Write-Host "  help           Show this help"
         Write-Host ""
         Write-Host "Options:" -ForegroundColor Yellow
         Write-Host "  --logfile        Pass --log both to the binary (output to console + file)"
-        Write-Host "  --debug          Start with Delve debugger on :2345 (for IDE attach)"
+        Write-Host "  --push           (package) also push the built image to the registry"
         Write-Host "  --help           Show this help"
         Write-Host ""
         Write-Host "Examples:" -ForegroundColor Yellow
         Write-Host "  .\build.ps1 dev                         # Start backend"
         Write-Host "  .\build.ps1 dev --logfile               # Dev with console + file logging"
-        Write-Host "  .\build.ps1 dev --debug                 # Dev with Delve debugger (IDE attach on :2345)"
+        Write-Host "  .\build.ps1 debug                       # Build + start Delve (IDE attach on :2345)"
+        Write-Host "  .\build.ps1 debug --logfile             # Debug with console + file logging"
+        Write-Host "  .\build.ps1 package                     # Build image git.chuangyun.work/archive/llm-gateway:latest"
+        Write-Host "  .\build.ps1 package --push              # Build + push image to registry"
         Write-Host ""
     }
 }

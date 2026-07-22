@@ -77,6 +77,18 @@ const columns: ColumnDef<User, any>[] = [
       );
     },
   },
+  {
+    id: 'userKeyCount',
+    header: 'API Keys',
+    meta: { label: 'API Keys', className: 'w-24' },
+    cell: ({ row }) => (
+      <EasyTooltip tooltip="点击查看详情">
+        <Link className="text-primary underline-offset-4 hover:underline" to="/user-keys" search={{ uid: [row.original.uid] }}>
+          {row.original.userKeyCount}
+        </Link>
+      </EasyTooltip>
+    ),
+  },
 ];
 
 function UsersPage() {
@@ -86,49 +98,19 @@ function UsersPage() {
     setBreadcrumbs(pageInformation.breadcrumbs ?? []);
   }, []);
 
-  const allColumns: ColumnDef<User, any>[] = [
-    ...columns,
-    {
-      id: 'api_keys',
-      header: 'API Keys',
-      meta: { label: 'API Keys', className: 'w-24' },
-      cell: ({ row }) => (
-        <EasyTooltip tooltip="点击查看详情">
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/user-keys" search={{ uid: [row.original.uid] }}>
-              {row.original.userKeyCount}
-            </Link>
-          </Button>
-        </EasyTooltip>
-      ),
-    },
-  ];
-
   return (
     <Page<User>
       infomation={pageInformation}
-      columns={allColumns}
+      columns={columns}
       service={userService}
       options={{ showSelectColumn: false }}
       optionColumn={(column, domRender) => ({ ...column, cell: (res) => domRender(res.row.original) })}
       renderViewDetail={(entity) => <UserDetail entity={entity} />}
-      formInitialValue={(formType, entity) => (formType == 'add' ? {
-        uid: 0,
-        username: '',
-        password: '',
-        name: '',
-        phone: '',
-        department: '',
-        role: 'user',
-        status: 'active',
-      } : {
-        ...entity!,
-        password: '',
-      })}
-      renderViewForm={(form, _entity) => (
+      formInitialValue={(formType, entity) => (formType == 'add' ? { role: 'user', status: 'active' } : { ...entity!, password: '' })}
+      renderViewForm={(form, _entity, formType) => (
         <div className="grid grid-cols-12 gap-4">
           <FormFieldInput className="col-span-4" form={form} name="username" title="用户名" required />
-          <FormFieldInput className="col-span-4" form={form} name="password" title="密码" placeholder="留空不修改" type="password" />
+          <FormFieldInput className="col-span-4" form={form} name="password" title="密码" placeholder={formType == 'update' ? "留空不修改" : ''} type="password" required={formType == 'add'} />
           <FormFieldSelect
             className="col-span-4"
             form={form}
@@ -204,7 +186,7 @@ function UserDetail({ entity }: { entity: User; }) {
                 <TableRow>
                   <TableHead>名称</TableHead>
                   <TableHead>Key</TableHead>
-                  <TableHead>状态</TableHead>
+                  <TableHead className="text-center w-20">状态</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -224,7 +206,7 @@ function UserDetail({ entity }: { entity: User; }) {
                           <CopyButton text={key.key} />
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-center w-20">
                         <Badge variant={key.isActive ? 'default' : 'destructive'}>
                           {key.isActive ? '启用' : '禁用'}
                         </Badge>
